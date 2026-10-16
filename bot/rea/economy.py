@@ -25,6 +25,16 @@ APRICORNS = ("black apricorn", "blue apricorn", "green apricorn", "pink apricorn
              "red apricorn", "white apricorn", "yellow apricorn")
 
 
+LARGE_TREES = {"tree_large1", "tree_savanna1"}      # 4 logs, but CUT needs a fully evolved pokemon (PlayerStanding)
+
+
+def fully_evolved_cut(g, s):
+    """True if some party member that knows CUT has no further evolution."""
+    from . import evo
+    table = evo.load(g)
+    return any("CUT" in m.get("hms", []) and not table.get(m["specie"]) for m in s["player"]["party"])
+
+
 def party_with(s, move):
     """Index of the first party member that offers field move `move`, or None."""
     for i, m in enumerate(s["player"]["party"]):
@@ -45,12 +55,14 @@ def score(kind, wants):
     return v
 
 
-def nearest_resource(world, here, objs, wants, move, skip=()):
+def nearest_resource(world, here, objs, wants, move, skip=(), allow_large=False):
     dist = world.dist_map(here)
     best, best_cost = None, 1e18
     for o in objs:
         kind = o[2]
         if kind not in YIELD or YIELD[kind][0] != move or (o[0], o[1]) in skip:
+            continue
+        if kind in LARGE_TREES and not allow_large:
             continue
         v = score(kind, wants)
         if v <= 0:
@@ -94,7 +106,8 @@ def gather(g, world, need, move="CUT", log=print, max_trips=40):
             if not field.select(g, idx, move, log):
                 return False
         here = nav.tile_of(s["player"])
-        o = nearest_resource(world, here, g.objects(), dict(lack), move, skip)
+        o = nearest_resource(world, here, g.objects(), dict(lack), move, skip,
+                             allow_large=(move == "CUT" and fully_evolved_cut(g, s)))
         if o is None:
             log("no %s resource left for %s" % (move, lack))
             return False

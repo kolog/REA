@@ -3,6 +3,8 @@ _cache = {}
 
 # species whose evolution unlocks something the base needs (FLY = free travel, no encounters)
 FLY_LINE = {"natu", "spearow", "pidgey", "pidgeotto", "hoothoot", "taillow", "wingull", "golbat", "gligar"}
+# CUT user must be fully evolved to fell large trees (4 logs each): chikorita -> bayleef -> meganium
+CUT_LINE = {"chikorita", "bayleef", "bulbasaur", "ivysaur", "oddish", "gloom", "bellsprout", "weepinbell"}
 
 
 def load(g):
@@ -31,7 +33,7 @@ def trainee(g, s):
         ev = next_level_evo(g, m["specie"])
         score = (top - m["lvl"]) * 1.0
         if ev:
-            score += 6.0 + (12.0 if m["specie"] in FLY_LINE else 0.0)
+            score += 6.0 + (12.0 if m["specie"] in FLY_LINE else 0.0) + (8.0 if m["specie"] in CUT_LINE else 0.0)
             score += max(0, 10 - (ev[0] - m["lvl"]))      # about to evolve
         if score > bscore:
             best, bscore = i, score

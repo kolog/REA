@@ -170,3 +170,18 @@ extra needs to be built; sleeping inside the house makes it the pokemon pen.
 * Pen recipe that works: fences on 3 sides + 2 fences flanking the open side + door in between (auto-converts to
   `fence1gate1`); the game fills the enclosed tile with a fence (`fence1_NSEW`): remove it with CUT; collect from the
   gate tile (A facing the pokemon).
+
+## Large trees need a fully evolved CUT user
+`tree_large1` / `tree_savanna1` (4 logs) can only be cut when `hmPokemon.hasEvo()` is false: chikorita must reach
+meganium (chikorita 16 -> bayleef, 32 -> meganium) before large trees can be felled.
+
+## DIG
+With DIG selected the build tile is `hole1` (L/R do not cycle in hole mode): A digs a hole and gives a terrain item
+by ground type (grass, soft sand, light clay, dry soil, damp soil ...). `*_cracked` tiles drop stones/fossils
+(sun/fire/leaf/dusk/ice/water/thunder stones, revive, star piece, ultra ball ...). Tidal tiles are named
+`*_tidalwater` so they satisfy the WATER habitat; the tide flips shore tiles between sand and water.
+
+## Pen recipe (automated in farm.deploy_pen)
+fences N/E/W of the pen tile, gate (door between two fences) on the south side with two flanking fences; stand
+on the gate to CUT the fence the game puts on the enclosed tile, then DROP the pokemon from the gate. Collect by
+facing the pokemon from the gate. Works for the Ponyta next to the campfire (FIRE habitat).

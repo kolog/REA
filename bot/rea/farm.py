@@ -48,7 +48,7 @@ class HabitatMap:
             row = world.rows[r]
             y = world.y1 - r
             for c, ch in enumerate(row):
-                if ch == "w":
+                if ch in ("w", "t"):                  # tidal tiles are named *_tidalwater: they count as water
                     self.tags["water"].add((c + world.x0, y))
                 elif ch == "g":
                     self.tags["grass"].add((c + world.x0, y))
@@ -251,3 +251,116 @@ def relocate_far(g, world, objs, camp, log=print, avoid=(), max_dist=18):
 
 def farmable_species(m):
     return farmable(m[6]) and produce_value(m[6]) > 0
+
+
+# ---------------------------------------------------------------- pens (1x1 cells that keep a pokemon in place)
+def pen_cells(P):
+    """Layout around pen tile P=(x, y): fences N/E/W, gate S, fences flanking the gate."""
+    x, y = P
+    fences = [(x, y + 1), (x + 1, y), (x - 1, y), (x - 1, y - 1), (x + 1, y - 1)]
+    gate = (x, y - 1)
+    return fences, gate
+
+
+def find_pen_spot(world, objs, types, origin, near=None, near_r=6, limit=250, hab=None):
+    """Nearest pen tile P with all pen cells free (plus a free tile south of the gate) whose habitat is satisfied."""
+    hab = hab or HabitatMap(world, objs)
+    groups = groups_for(types)
+    taken = {(o[0], o[1]) for o in objs}
+    dist = world.dist_map(origin)
+
+    def free(p):
+        return world.ch(p) in (".", "t") and p not in taken
+    cands = sorted((p for p, d in dist.items() if d <= limit and (near is None or (abs(p[0] - near[0]) <= near_r
+                                                                                  and abs(p[1] - near[1]) <= near_r))),
+                   key=lambda p: dist[p])
+    for P in cands:
+        fences, gate = pen_cells(P)
+        cells = [P, gate, (gate[0], gate[1] - 1)] + fences
+        if all(free(c) for c in cells) and hab.satisfied(P, groups):
+            return P
+    return None
+
+
+def build_pen(g, world, objs, P, log=print, avoid=()):
+    """Build the pen around P (accumulating materials first). Returns True when the gate exists and P is clear."""
+    fences, gate = pen_cells(P)
+    need = {"log": len(fences) + 1, "grass": len(fences) + 1}
+    s = nav.ensure_free(g)
+    if economy.missing(economy.inv(s), need):
+        economy.gather(g, world, need, "CUT", log=log, max_trips=30)
+        field.clear(g)
+        if economy.missing(economy.inv(g.state()), need):
+            return False
+    have = {(o[0], o[1]): o[2] for o in g.objects()}
+    for t in fences:
+        if t not in have and not economy.build_at(g, "fence1", t, log=log):
+            log("pen: could not build fence at %s" % (t,))
+    if have.get(gate, "") == "" and not economy.build_at(g, "house5_door1", gate, log=log):
+        log("pen: could not build the gate at %s" % (gate,))
+        return False
+    return True
+
+
+def fill_clear(g, world, P, log=print):
+    """The game fills a fully enclosed tile with a fence; stand on the gate and CUT it away."""
+    objs = {(o[0], o[1]): o[2] for o in g.objects()}
+    if "fence" not in objs.get(P, ""):
+        return True
+    return economy.cut_tile(g, world, P, "CUT", log)
+
+
+def drop_into_pen(g, world, idx, P, log=print):
+    """Stand on the gate, face the pen tile and DROP party member idx there."""
+    gate = (P[0], P[1] - 1)
+    s = nav.ensure_free(g)
+    south = (gate[0], gate[1] - 1)
+    if travel.go_near(g, world, south, dist=0, avoid_grass=True, max_legs=80) != "arrived":
+        return False
+    g.walk(["up"])                               # onto the gate (stays outdoors)
+    nav.settle(g)
+    s = g.state()
+    if nav.tile_of(s["player"]) != gate:
+        return False
+    fill_clear(g, world, P, log)
+    field.clear(g)
+    recruit.face(g, "up")
+    n = len(g.state()["player"]["party"])
+    if not field.party_action(g, idx, "DROP", log):
+        return False
+    for _ in range(30):
+        s = g.state()
+        if "DrawYesNoMenu" in s["actions"]:
+            recruit.yes_no(g, True)
+        elif "DisplayText" in s["actions"]:
+            g.tap("a", 2, 14)
+        elif "PlayerStanding" in s["actions"] and not any("Menu" in a for a in s["actions"]):
+            break
+        else:
+            g.wait(8)
+    return len(g.state()["player"]["party"]) < n
+
+
+def deploy_pen(g, world, objs, idx, log=print, avoid=(), near=None):
+    """Pen spot (near the camp if possible) -> build -> drop the pokemon inside. True / False / 'interrupted'."""
+    s = g.state()
+    m = s["player"]["party"][idx]
+    here = nav.tile_of(s["player"])
+    hab = HabitatMap(world, objs)
+    P = find_pen_spot(world, objs, m["types"], here, near=near, hab=hab) if near else None
+    if P is None:
+        P = find_pen_spot(world, objs, m["types"], here, hab=hab)
+    if P is None:
+        log("no pen spot for %s" % m["specie"])
+        return False
+    log("pen for %s at %s" % (m["specie"], P))
+    if not build_pen(g, world, objs, P, log=log, avoid=avoid):
+        return False
+    s = nav.ensure_free(g)
+    if "DrawBattle" in s["actions"]:
+        return "interrupted"
+    idx = next((i for i, x in enumerate(s["player"]["party"]) if x["specie"] == m["specie"]), idx)
+    ok = drop_into_pen(g, world, idx, P, log)
+    if ok:
+        log("%s is penned at %s" % (m["specie"], P))
+    return ok
