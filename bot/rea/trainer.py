@@ -10,7 +10,7 @@ import random
 import time
 from collections import deque
 
-from . import battle, nav, rest
+from . import battle, evo, field, nav, rest
 from .world import World
 
 MEMORY = os.path.join(os.path.dirname(__file__), "..", "..", "tools", "memory.json")
@@ -64,6 +64,23 @@ class Trainer:
         cur = s["player"]["curr"]
         return party[cur] if 0 <= cur < len(party) else party[0]
 
+    def strongest(self, s):
+        return max(m["lvl"] for m in s["player"]["party"])
+
+    def ensure_lead(self, s):
+        """Let the weakest worthwhile mon open the battles (the decision logic swaps in a stronger one when needed)."""
+        i = evo.trainee(self.g, s)
+        if i is None:
+            if s["player"]["hm"] >= 0 and s["player"]["field"] == "":
+                field.clear(self.g)
+            return
+        m = s["player"]["party"][i]
+        if m["stats"]["hp"] < 0.6 * m["max"]["hp"]:
+            return
+        if s["player"]["hm"] != i or s["player"]["field"] != "":
+            if field.set_lead(self.g, i, self.log):
+                self.log("lead: %s L%d is training" % (m["specie"], m["lvl"]))
+
     def refresh_world(self):
         self.world = World(self.g.world())
 
@@ -85,7 +102,7 @@ class Trainer:
     # ---------------------------------------------------------------- zone choice
     def choose_zone(self, s):
         here = nav.tile_of(s["player"])
-        lvl = self.lead(s)["lvl"]
+        lvl = self.strongest(s)
         now = time.time()
         dist = self.world.dist_map(here)
         want_lo, want_hi = max(2, lvl - 4), lvl + 4
@@ -175,6 +192,7 @@ class Trainer:
                 return g.state()
         center, zl = self.zone
         w = self.world
+        self.ensure_lead(s)
         in_zone = w.ch(here) == "g" and w.level(here) == zl
         if not in_zone:
             s, st = self.go(lambda p: w.ch(p) == "g" and w.level(p) == zl and

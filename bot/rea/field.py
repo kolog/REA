@@ -172,3 +172,24 @@ def drop_member(g, idx, log=print):
         else:
             g.wait(8)
     return len(g.state()["player"]["party"]) < n
+
+
+def set_lead(g, idx, log=print):
+    """Make party member idx follow the player (FOLLOW): it then opens every battle, so it takes part in the
+    fight and earns exp even when a stronger mon is swapped in. Water-only species cannot follow."""
+    s = g.state()
+    if s["player"]["hm"] == idx and s["player"]["field"] == "":
+        return True
+    if s["player"]["field"] != "":
+        clear(g)
+    if not party_action(g, idx, "FOLLOW", log):
+        return False
+    for _ in range(30):
+        s = g.state()
+        if "DisplayText" in s["actions"]:
+            g.tap("a", 2, 14)
+        elif "PlayerStanding" in s["actions"] and not any("Menu" in a for a in s["actions"]):
+            break
+        else:
+            g.wait(8)
+    return g.state()["player"]["hm"] == idx

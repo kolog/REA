@@ -136,29 +136,59 @@ def ball_multiplier(ball, me, opp, turn, night=False):
     return 1.0
 
 
+A_LOOKUP = [1, 2, 3, 4, 5, 7, 10, 15, 20, 30, 40, 50, 60, 80, 100, 120, 140, 160, 180, 200, 220, 240, 254, 255]
+B_LOOKUP = [63, 75, 84, 90, 95, 103, 113, 126, 134, 149, 160, 169, 177, 191, 201, 211, 220, 227, 234, 240, 246, 251, 253, 255]
+
+
+def catch_probability(opp, mult):
+    """P(caught) for one throw: (a+1)/256 immediately, otherwise three shake checks against b (Battle.java)."""
+    rate = min(255, int(max(1, opp["stats"].get("catchRate", 100)) * mult))
+    m = 3 * opp["max"]["hp"]
+    h = 2 * opp["stats"]["hp"]
+    if m > 255:
+        m //= 4
+        h //= 4
+    a = max(1, (m - h) * rate // max(1, m))
+    if opp.get("status") in ("sleep", "freeze"):
+        a += 10
+    a = min(255, a)
+    if mult >= 99:
+        return 1.0
+    p1 = min(1.0, (a + 1) / 256.0)
+    i = 0
+    prev = -1
+    for val in A_LOOKUP:
+        if a > prev and a <= val:
+            break
+        prev = val
+        i += 1
+    b = B_LOOKUP[min(i, len(B_LOOKUP) - 1)]
+    return p1 + (1 - p1) * (b / 256.0) ** 3
+
+
 def best_ball(s):
-    """The ball with the best catch chance per unit of cost that we actually have."""
+    """(ball, probability) with the best chance among the balls we hold; cheap balls win near-ties."""
     have = s["player"]["items"]
     opp = s["battle"].get("opp")
     party = s["player"]["party"]
     me = party[s["player"]["curr"]] if 0 <= s["player"]["curr"] < len(party) else party[0]
     turn = s["battle"].get("turn", 1)
-    best, bs = None, -1.0
+    best, bp, bscore = None, 0.0, -1.0
     for b in BALLS:
         if have.get(b, 0) <= 0:
             continue
-        m = ball_multiplier(b, me, opp, turn) if opp else 1.0
-        sc = m / BALL_COST.get(b, 1) ** 0.5       # cheap balls win ties, but a big multiplier still dominates
-        if sc > bs:
-            best, bs = b, sc
-    return best
+        p = catch_probability(opp, ball_multiplier(b, me, opp, turn)) if opp else 0.0
+        score = p - 0.03 * BALL_COST.get(b, 1)
+        if score > bscore:
+            best, bp, bscore = b, p, score
+    return (best, bp) if best else (None, 0.0)
 
 
 def want_catch(s):
     """Catch new species when there is room, a ball, and the target is not wildly out of our league."""
     party = s["player"]["party"]
     opp = s["battle"].get("opp")
-    if not opp or len(party) >= 6 or best_ball(s) is None:
+    if not opp or len(party) >= 6 or best_ball(s)[0] is None:
         return False
     if opp["specie"] in {m["specie"] for m in party}:
         return False
@@ -182,8 +212,11 @@ def decide(s, switched_recently=False, allow_ball=True):
     turns_to_kill = 1.0 / off if off > 0 else 99
     losing = turns_to_die < 2 and turns_to_kill > 1.2
     ohp = opp["stats"]["hp"] / max(1, opp["max"]["hp"])
-    if allow_ball and want_catch(s) and (ohp <= 0.5 or opp["status"] not in ("", None)) and hpf > 0.25:
-        return "ball", best_ball(s)
+    if allow_ball and want_catch(s) and hpf > 0.25:
+        ball, p = best_ball(s)
+        # a good ball for this level can be thrown at full hp; otherwise weaken it first
+        if p >= 0.5 or (p >= 0.12 and (ohp <= 0.5 or opp["status"] not in ("", None))):
+            return "ball", ball
     # a clearly better mon is waiting: swap, unless we just did (avoid ping-pong) or we are about to win anyway
     if best_i != cur_i and not switched_recently and best_v > max(1.6 * cur_v, 0.8) and turns_to_kill > 1.5:
         return "switch", best_i
