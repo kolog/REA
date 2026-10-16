@@ -1,5 +1,5 @@
 """Healing by sleeping in the bag (restores the party; also sets the white-out spawn)."""
-from . import nav, items
+from . import nav, items, field
 
 BAD_TERRAIN = ("stairs", "mountain", "snow", "desert")
 
@@ -27,21 +27,60 @@ def find_spot(g, s, radius=20, max_level=99):
     return cands[:1] and cands[0]
 
 
-def rest(g, until=0.95, log=print, max_seconds=240):
-    """Walk to a safe tile, use the sleeping bag, wait until healed, wake up. Returns True if healed."""
+def world_spot_fn(world, bad):
+    """Candidate sleeping tiles from the global map: plain ground (not grass/tidal) with free ground to the right."""
+    def ok(p):
+        return p not in bad and world.ch(p) == "." and world.ch((p[0] + 1, p[1])) == "."
+    return ok
+
+
+def rest(g, until=0.95, log=print, max_seconds=240, attempts=12):
+    """Leave the grass by the cheapest route, sleep in the bag, wait until healed."""
     import time
-    s = g.state()
+    from . import battle, travel
+    from .world import World
+    s = nav.ensure_free(g)
     if "sleeping bag" not in s["player"]["items"]:
         return False
-    spot = find_spot(g, s)
-    if not spot:
+    world = World(g.world())
+    bad = set()
+    arrived = False
+    for _ in range(attempts):
+        s = nav.ensure_free(g)
+        if battle.in_battle(s):
+            battle.run_battle(g, log=log)
+            continue
+        here = nav.tile_of(s["player"])
+        ok_fn = world_spot_fn(world, bad)
+        path = world.path(here, lambda p: ok_fn(p), avoid_grass=True)
+        if not path:
+            return False
+        # walk the whole route in short legs; grass tiles cost 43 so this leaves grass as fast as possible
+        goal = here
+        for d in path:
+            goal = (goal[0] + nav.DIRS[d][0], goal[1] + nav.DIRS[d][1])
+        r = travel.go_near(g, world, goal, dist=0, avoid_grass=True, max_legs=60)
+        s = nav.ensure_free(g)
+        if battle.in_battle(s):
+            continue
+        if r != "arrived":
+            bad.add(goal)
+            continue
+        grid = nav.Grid(g.grid(3), s["map"]["mons"])
+        if sleep_ok(grid, nav.tile_of(s["player"])):
+            arrived = True
+            break
+        bad.add(goal)             # terrain name rules out sleeping here (desert, mountain ...)
+    if not arrived:
         return False
-    ok, s = nav.goto(g, spot)
-    if not ok:
-        return False
+    field.clear(g)                       # the bag refuses to work while a field move is active
     if not items.use_item(g, "sleeping bag"):
         items.close_menus(g)
         return False
+    for _ in range(40):                      # the lying-down animation takes a few seconds
+        s = g.wait(15)
+        if s["player"]["isSleeping"]:
+            break
     t0 = time.time()
     while time.time() - t0 < max_seconds:
         s = g.wait(120)

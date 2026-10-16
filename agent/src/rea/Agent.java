@@ -145,21 +145,58 @@ public final class Agent {
         if (path == null && remaining > 0) { remaining--; if (remaining == 0) replyWhenDone = true; }
     }
 
+    static int curTx, curTy; // tile coordinates (in px) of the end of the previous step
+
+    static boolean reached(float x, float y, String d, float tx, float ty) {
+        switch (d) {
+            case "right": return x >= tx - 0.5f;
+            case "left": return x <= tx + 0.5f;
+            case "up": return y >= ty - 0.5f;
+            default: return y <= ty + 0.5f;
+        }
+    }
+
+    static float remaining(float x, float y, String d, float tx, float ty) {
+        switch (d) {
+            case "right": return tx - x;
+            case "left": return x - tx;
+            case "up": return ty - y;
+            default: return y - ty;
+        }
+    }
+
+    /**
+     * The game decides whether to chain another step in the very frame the player reaches a tile, using the keys still
+     * held at that moment. So the key for the *next* direction (or none) must already be applied a few px early.
+     */
     static void walkFrame() throws Exception {
         Object pl = fget(G(), "player");
         Object pos = fget(pl, "position");
         float x = (Float) fget(pos, "x"), y = (Float) fget(pos, "y");
         want = new boolean[KEYS.length];
         if (!Boolean.TRUE.equals(fget(G(), "playerCanMove"))) { endWalk("interrupted"); return; }
-        if (pidx > 0 && Math.abs(x - tx) < 0.5f && Math.abs(y - ty) < 0.5f || pidx == 0) {
-            if (pidx >= path.length) { endWalk("ok"); return; }
-            String d = path[pidx++];
-            tx = Math.round(x / 16f) * 16f + (d.equals("right") ? 16 : d.equals("left") ? -16 : 0);
-            ty = Math.round(y / 16f) * 16f + (d.equals("up") ? 16 : d.equals("down") ? -16 : 0);
+        if (pidx == 0) { // start: the plan begins at the tile we stand on
+            curTx = Math.round(x / 16f) * 16; curTy = Math.round(y / 16f) * 16;
+            pidx = 1;
             stall = 0;
         }
-        String cd = path[pidx - 1];
-        want[java.util.Arrays.asList(KEYS).indexOf(cd)] = true;
+        String d = path[pidx - 1];
+        float tx = curTx + (d.equals("right") ? 16 : d.equals("left") ? -16 : 0);
+        float ty = curTy + (d.equals("up") ? 16 : d.equals("down") ? -16 : 0);
+        if (reached(x, y, d, tx, ty)) {
+            curTx = (int) tx; curTy = (int) ty;
+            if (pidx >= path.length) { endWalk("ok"); return; }
+            pidx++;
+            stall = 0;
+            d = path[pidx - 1];
+            tx = curTx + (d.equals("right") ? 16 : d.equals("left") ? -16 : 0);
+            ty = curTy + (d.equals("up") ? 16 : d.equals("down") ? -16 : 0);
+        }
+        String press = d;
+        if (remaining(x, y, d, tx, ty) <= 3.5f) {          // about to arrive: hand over / release early
+            press = pidx < path.length ? path[pidx] : null;
+        }
+        if (press != null) want[java.util.Arrays.asList(KEYS).indexOf(press)] = true;
         if (x == lastX && y == lastY) { if (++stall > 45) { pidx--; endWalk("blocked"); } } else stall = 0;
         lastX = x; lastY = y;
     }

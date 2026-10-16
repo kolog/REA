@@ -21,6 +21,10 @@ def _wait_for(g, name, tries=60, enabled=True):
 
 def open_bag(g):
     """From the overworld to the item list. Returns the DrawItemMenuGen2 dump or None."""
+    close_menus(g)                      # a menu left open would turn Start into "sort items"
+    s = g.state()
+    if "DrawBattle" in s["actions"]:
+        return None
     g.tap("start", 2, 20)
     menu = _wait_for(g, "DrawPlayerMenu")
     if menu is None:
@@ -39,6 +43,9 @@ def select_item(g, name):
         m = g.act("DrawItemMenuGen2", 2)
         if m is None:
             return False
+        if m.get("isSorting"):          # A on the same entry just ends the sorting mode
+            g.tap("a", 2, 12)
+            continue
         items = m["itemsList"]
         if name in items:
             t = items.index(name)

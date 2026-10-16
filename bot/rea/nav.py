@@ -86,6 +86,25 @@ def is_free(s):
         a in s["actions"] for a in ("DisplayText", "DrawBattle", "DrawAttacksMenu", "DrawPlayerMenu"))
 
 
+def ensure_free(g, tries=25):
+    """Close leftover text boxes / menus until the overworld accepts input again. Returns the state."""
+    s = g.state()
+    for _ in range(tries):
+        if is_free(s) or "DrawBattle" in s["actions"]:
+            return s
+        acts = s["actions"]
+        if "DrawYesNoMenu" in acts:
+            g.tap("b", 2, 12)
+        elif "DisplayText" in acts:
+            g.tap("a", 2, 14)
+        elif any(a.startswith("Draw") and "Menu" in a for a in acts):
+            g.tap("b", 2, 14)
+        else:
+            g.wait(8)
+        s = g.state()
+    return s
+
+
 def walk_step(g, d, max_frames=60):
     """Try to move one tile in direction d. Returns (state, moved)."""
     s = g.state()
@@ -118,7 +137,7 @@ def settle(g, frames=60):
 
 def goto(g, goal, radius=20, max_replans=60, leg=6, policy=None):
     """Walk to tile `goal` (tx, ty). Returns (arrived, last_state)."""
-    s = g.state()
+    s = ensure_free(g)
     for _ in range(max_replans):
         if not is_free(s):
             return False, s
