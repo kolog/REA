@@ -99,7 +99,7 @@ def gather(g, world, need, move="CUT", log=print, max_trips=40):
             log("no %s resource left for %s" % (move, lack))
             return False
         tile = (o[0], o[1])
-        r = travel.go_near(g, world, tile, dist=1, max_level=None)
+        r = travel.go_near(g, world, tile, dist=1, max_level=None, avoid_grass=True)
         if r == "battle":
             continue
         d = recruit.approach(g, tile)

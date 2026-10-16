@@ -500,7 +500,7 @@ public final class Agent {
         return sb.append("]}").toString();
     }
 
-    /** All overworld pokemon in the world (not just on screen): [specie, level, temper, tileX, tileY, holds]. */
+    /** All overworld pokemon in the world (not just on screen): [specie, level, temper, tileX, tileY, holds, types, hms]. */
     static String allMons() throws Exception {
         Map<?, ?> mons = (Map<?, ?>) fget(fget(G(), "map"), "pokemon");
         Object over = fget(fget(G(), "map"), "overworldTiles");
@@ -515,7 +515,8 @@ public final class Agent {
             sb.append(first ? "" : ",").append('[').append(q(str(sp == null ? null : fget(sp, "name")))).append(',')
               .append(fget(pk, "level")).append(',').append(q(temper(pk))).append(',')
               .append(Math.round(fx.getFloat(e.getKey()) / 16f)).append(',')
-              .append(Math.round(fy.getFloat(e.getKey()) / 16f)).append(',').append(q(str(fget(pk, "hasItem")))).append(']');
+              .append(Math.round(fy.getFloat(e.getKey()) / 16f)).append(',').append(q(str(fget(pk, "hasItem")))).append(',')
+              .append(listJson(fget(pk, "types"))).append(',').append(listJson(fget(pk, "hms"))).append(']');
             first = false;
         }
         return sb.append("]}").toString();

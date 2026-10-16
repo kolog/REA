@@ -27,7 +27,7 @@ class World:
     def walkable(self, p):
         return self.ch(p) in WALK_COST
 
-    def path(self, start, goal_fn, blocked=(), max_level=None, avoid_grass=False, limit=200000):
+    def path(self, start, goal_fn, blocked=(), max_level=None, avoid_grass=False, limit=200000, avoid=()):
         """Cheapest list of directions from start to the nearest tile with goal_fn(tile) true."""
         best = {start: 0.0}
         prev = {}
@@ -56,6 +56,8 @@ class World:
                     c += 40
                 if max_level is not None and self.level(nx) > max_level:
                     c += 25
+                if nx in avoid:
+                    c += 30
                 ng = g + c
                 if ng < best.get(nx, 1e18):
                     best[nx] = ng
