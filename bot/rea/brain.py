@@ -193,7 +193,11 @@ class Brain:
             return False
         top = max(m["lvl"] for m in party)
         here = nav.tile_of(s["player"])
-        cands = [m for m in self.mons if "FLY" in m[7] and m[2] in ("aggro", "friendly") and m[1] <= top + 10]
+        dist = self.world.dist_map(here)
+        def reachable(m):
+            return any((m[3] + dx, m[4] + dy) in dist for dx in range(-5, 6) for dy in range(-5, 6))
+        cands = [m for m in self.mons if "FLY" in m[7] and m[2] in ("aggro", "friendly") and m[1] <= top + 6
+                 and reachable(m)]
         if not cands:
             return False
         cands.sort(key=lambda m: (m[1] > top + 4, abs(m[3] - here[0]) + abs(m[4] - here[1]) + 3 * m[1]))
