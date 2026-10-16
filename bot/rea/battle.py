@@ -264,6 +264,7 @@ def throw_ball(g, ball):
         return False
     g.wait(10)
     if not _items.select_item(g, ball):
+        print("  [battle] could not pick %r: %s" % (ball, _items.last_error))
         g.tap("b", 2, 14)
         return False
     for _ in range(40):

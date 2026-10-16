@@ -195,3 +195,10 @@ lanturn, mareep line ...). A follower with FLASH repels a ghost within 64 px; fl
 ## Pens: the two fences beside the gate can be cut afterwards
 Once the door has become a gate, cutting the two flanking fences (CUT) leaves the gate intact and refunds the
 material: the final pen is 3 fences (N/E/W) + 1 gate (S).
+
+## Item menu (bag) tabs and misc bot-facing quirks
+* The bag has 5 tabs (L/R arrows): key items (sleeping bag, rope) / medicine / ... / **balls** / materials. It opens on
+  the last used tab, so item search must cycle tabs (done in items.select_item, accent-insensitive).
+* A sleeping player wakes only on a fresh B press; a bot restart can find it asleep (nav.ensure_free wakes it).
+* Level-based exp is split among participants, so a weak trainee levels slowly beside a strong partner; stronger
+  routes (up to +8 levels) help.

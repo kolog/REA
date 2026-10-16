@@ -37,24 +37,46 @@ def open_bag(g):
     return _wait_for(g, "DrawItemMenuGen2", tries=120)
 
 
+last_error = ""
+
+
+def _norm(x):
+    import unicodedata
+    return "".join(c for c in unicodedata.normalize("NFD", str(x).lower()) if unicodedata.category(c) != "Mn")
+
+
 def select_item(g, name):
-    """With the bag open: put the cursor on `name` (switching tabs if needed) and press A."""
-    for _ in range(6):
+    """With the bag open: put the cursor on `name` (switching tabs if needed) and press A.
+    Names are compared without accents/case; on failure `last_error` says why."""
+    global last_error
+    last_error = ""
+    want = _norm(name)
+    seen_tabs = []
+    for _ in range(8):
         m = g.act("DrawItemMenuGen2", 2)
         if m is None:
+            last_error = "item menu not open"
             return False
         if m.get("isSorting"):          # A on the same entry just ends the sorting mode
             g.tap("a", 2, 12)
             continue
-        items = m["itemsList"]
-        if name in items:
-            t = items.index(name)
+        lst = m["itemsList"]
+        norm = [_norm(x) for x in lst]
+        if want in norm:
+            t = norm.index(want)
             _tap_until(g, "down" if t > m["currIndex"] + m["cursorPos"] else "up",
                        lambda: (lambda x: x["currIndex"] + x["cursorPos"])(g.act("DrawItemMenuGen2", 1)), t,
                        tries=40, gap=4)
             g.tap("a", 2, 12)
             return True
-        g.tap("right", 2, 12)  # next bag tab
+        key = tuple(norm)
+        if key in seen_tabs:            # wrapped around all tabs without finding it
+            last_error = "%r not in any tab (tabs: %s)" % (name, seen_tabs)
+            return False
+        seen_tabs.append(key)
+        g.tap("right", 2, 14)
+        g.wait(6)
+    last_error = "%r not found after cycling tabs" % name
     return False
 
 

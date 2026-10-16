@@ -106,6 +106,11 @@ def ensure_outside(g, tries=4):
 def ensure_free(g, tries=25, allow_interior=False):
     """Close leftover text boxes / menus until the overworld accepts input again. Returns the state."""
     s = g.state()
+    for _ in range(4):                                   # a bot restart can find the player asleep
+        if not s.get("player", {}).get("isSleeping"):
+            break
+        g.tap("b", 2, 40)
+        s = g.state()
     if not allow_interior and s.get("map", {}).get("interior") and is_free(s):
         s = ensure_outside(g)
     for _ in range(tries):
