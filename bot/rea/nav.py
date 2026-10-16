@@ -89,16 +89,29 @@ def is_free(s):
 
 
 def ensure_outside(g, tries=4):
-    """Leave a house interior (build/cut/farm work on the outside map only works from outside)."""
+    """Leave a house interior: walk to the door tile first (the only exit), then step down."""
     s = g.state()
     for _ in range(tries):
         if not s.get("map", {}).get("interior"):
             return s
-        if is_free(s):
-            g.walk(["down"])
-            settle(g)
-        else:
+        if not is_free(s):
             g.tap("a", 2, 14)
+            s = g.state()
+            continue
+        here = tile_of(s["player"])
+        doors = [(o[0], o[1]) for o in g.objects() if "door" in o[2] and o[2].startswith("house")]
+        if doors:
+            door = min(doors, key=lambda d: abs(d[0] - here[0]) + abs(d[1] - here[1]))
+            dirs = []
+            dy = door[1] - here[1]
+            dirs += ["up" if dy > 0 else "down"] * abs(dy)
+            dx = door[0] - here[0]
+            dirs += ["right" if dx > 0 else "left"] * abs(dx)
+            if dirs:                                     # the room is an empty rectangle: y first, then x
+                g.walk(dirs)
+                settle(g)
+        g.walk(["down"])
+        settle(g)
         s = g.state()
     return s
 

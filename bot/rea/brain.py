@@ -222,6 +222,48 @@ class Brain:
             recruit.provoke(self.g, (x[3], x[4]), log=self.log)
         return True
 
+    def goal_balls(self, s):
+        """Keep ~20 balls: apricorns (CUT) -> campfire balls; magnet + hard shell -> poke ball; fast ball + magnet ->
+        quick ball (x5 on turn 1) at the kiln inside the house."""
+        if self.camp is None or "CUT" not in self.known_moves(s):
+            return False
+        items = s["player"]["items"]
+        balls = self.balls(s)
+        apr = self.apricorns(s)
+        door = rest.home_door(self.objs)
+        origin = (door[0] - 2, door[1]) if door else None
+        if balls >= 20 and apr == 0:
+            return False
+        if apr + balls < 14 and self.failed.get("apricorns", 0) < 4:
+            before = self.apricorns(s)
+            economy.gather(self.g, self.world, {"apricorn": min(10, 16 - balls - apr) + apr}, "CUT", log=self.log, max_trips=14)
+            field.clear(self.g)
+            if self.apricorns(self.g.state()) <= before:
+                self.failed["apricorns"] = self.failed.get("apricorns", 0) + 1
+            return True
+        if apr > 0 or (items.get("magnet", 0) and items.get("hard shell", 0)):
+            if economy.open_crafts(self.g, self.camp):
+                for apri, ball in BALL_FOR.items():
+                    n = self.g.state()["player"]["items"].get(apri, 0)
+                    if n:
+                        self.stats["crafted"] += economy.craft(self.g, ball, n, log=self.log)
+                it = self.g.state()["player"]["items"]
+                spare = it.get("magnet", 0) - it.get("fast ball", 0)        # keep one magnet per fast ball for quick balls
+                pairs = min(spare, it.get("hard shell", 0))
+                if pairs > 0:
+                    self.stats["crafted"] += economy.craft(self.g, "poké ball", pairs, log=self.log)
+                economy.close_crafts(self.g)
+                self.trainer.checkpoint(True)
+            return True
+        it = items
+        n = min(it.get("fast ball", 0), it.get("magnet", 0))
+        if n and origin:
+            got = base.kiln_craft(self.g, self.world, origin, [("quick ball", n)], log=self.log)
+            self.stats["crafted"] += sum(got.values())
+            self.trainer.checkpoint(True)
+            return bool(got)
+        return False
+
     def goal_house(self, s):
         """Build the 5x3 house next to the camp (once): it is the pen for captured pokemon and the best bed."""
         if self.camp is None or rest.home_door(self.objs) is not None or self.failed.get("house", 0) >= 2:
@@ -325,6 +367,13 @@ class Brain:
             return self.trainer.fight(s)
         self.trainer.note_position(s)
         self.trainer.checkpoint()
+        if not s["player"]["isSleeping"] and self.trainer.stuck(120, 1):      # watchdog: nothing moved for 2 minutes
+            self.log("watchdog: no movement for 2 min at %s (interior=%s)" % (nav.tile_of(s["player"]), s["map"]["interior"]))
+            self.trainer.hist.clear()
+            nav.ensure_outside(g)
+            field.clear(g)
+            self.failed["watchdog"] = self.failed.get("watchdog", 0) + 1
+            return g.state()
         if self.goal_rest(s):
             return g.state()
         self.refresh()
@@ -338,6 +387,8 @@ class Brain:
             goals = ()
         elif self.mission == "flyer":
             goals = (self.goal_flyer,)
+        elif self.mission == "balls":
+            goals = (self.goal_farm, self.goal_balls)
         for goal in goals:
             s = nav.ensure_free(g)
             if battle.in_battle(s):

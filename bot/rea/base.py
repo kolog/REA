@@ -145,3 +145,115 @@ def build_house(g, world, objs, origin, log=print, avoid=()):
             placed += 1
     field.clear(g)
     return placed, len(plan)
+
+
+# ---------------------------------------------------------------- inside the house
+def enter_home(g, world, door, log=print):
+    """Walk to the front of the door and step in. True when the map is the interior."""
+    s = nav.ensure_free(g, allow_interior=True)
+    if s["map"]["interior"]:
+        return True
+    r = economy.reach(g, world, (door[0], door[1] - 1), dist=0, log=log)
+    if r != "arrived":
+        return False
+    g.walk(["up"])
+    for _ in range(12):
+        g.wait(15)
+        if g.state()["map"]["interior"]:
+            return True
+    return False
+
+
+def walk_to(g, target):
+    """Walk inside the house (flat floor, no pathfinding needed): y first, then x."""
+    here = nav.tile_of(g.state()["player"])
+    dirs = []
+    dy = target[1] - here[1]
+    dirs += ["up" if dy > 0 else "down"] * abs(dy)
+    dx = target[0] - here[0]
+    dirs += ["right" if dx > 0 else "left"] * abs(dx)
+    if dirs:
+        g.walk(dirs)
+        nav.settle(g)
+    return nav.tile_of(g.state()["player"]) == tuple(target)
+
+
+def build_inside(g, name, target, log=print):
+    """From inside: stand south of `target` (on the floor), face it and build `name` from the interior list."""
+    from . import recruit
+    s = nav.ensure_free(g, allow_interior=True)
+    idx = economy.party_with(s, "BUILD")
+    if idx is None or not s["map"]["interior"]:
+        return False
+    stand = (target[0], target[1] - 1)
+    if not walk_to(g, stand):
+        log("could not walk to %s" % (stand,))
+        return False
+    if not field.select(g, idx, "BUILD", log):
+        return False
+    for _ in range(60):
+        if g.state()["player"]["building"] == name:
+            break
+        g.tap("r", 2, 8)
+    else:
+        log("interior build list has no %s" % name)
+        return False
+    recruit.face(g, "up")
+    before = dict(g.state()["player"]["items"])
+    g.tap("a", 2, 40)
+    for _ in range(6):
+        s = g.state()
+        if "DisplayText" in s["actions"]:
+            g.tap("a", 2, 14)
+        else:
+            g.wait(15)
+    after = g.state()["player"]["items"]
+    spent = {k: before[k] - after.get(k, 0) for k in before if before[k] != after.get(k, 0)}
+    if spent:
+        log("built %s inside at %s (spent %s)" % (name, target, spent))
+    return bool(spent)
+
+
+def furnish(g, world, objs, origin, log=print):
+    """Chest (pokemon storage) and ball kiln in the back corners of the house floor."""
+    x0, y0 = origin
+    door = (x0 + HOUSE_W // 2, y0)
+    plan = [("chest1", (x0, y0 + 2)), ("ball_kiln1", (x0 + HOUSE_W - 1, y0 + 2))]
+    if not enter_home(g, world, door, log):
+        return 0
+    done = 0
+    for name, tile in plan:
+        if build_inside(g, name, tile, log):
+            done += 1
+    field.clear(g)
+    nav.ensure_outside(g)
+    return done
+
+
+def kiln_craft(g, world, origin, recipes, log=print):
+    """Stand in front of the kiln (inside the house) and craft [(ball, amount)]. Returns {ball: amount}."""
+    x0, y0 = origin
+    door = (x0 + HOUSE_W // 2, y0)
+    kiln = (x0 + HOUSE_W - 1, y0 + 2)
+    got = {}
+    if not enter_home(g, world, door, log) or not walk_to(g, (kiln[0], kiln[1] - 1)):
+        return got
+    from . import recruit
+    field.clear(g)
+    recruit.face(g, "up")
+    g.tap("a", 2, 30)
+    for _ in range(40):
+        if "DrawCraftsMenu" in g.state()["actions"]:
+            g.wait(20)
+            break
+        g.wait(8)
+    else:
+        nav.ensure_outside(g)
+        return got
+    for ball, n in recipes:
+        c = economy.craft(g, ball, n, log=log)
+        if c:
+            got[ball] = c
+    economy.close_crafts(g)
+    nav.ensure_outside(g)
+    return got
