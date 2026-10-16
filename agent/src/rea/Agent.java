@@ -29,6 +29,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  *   do <keys|-> <frames>        -> hold keys (a+b+up+...) for N frames, then snapshot
  *   walk <dir,dir,...>          -> continuous walk; snapshot has walk.result ok|blocked|interrupted
  *   act <ClassName> [depth]     -> dump the first stack action with that simple name
+ *   save                        -> write the world save now
  *   grid <radius>               -> tiles around the player
  *   get <path> [depth]          -> reflective inspect, path like "player.pokemon.0"
  *   type <text>                 -> feed characters to the active text field
@@ -217,6 +218,14 @@ public final class Agent {
                     if (n.substring(n.lastIndexOf('.') + 1).equals(p[1])) { hit = a; break; }
                 }
                 send("{\"value\":" + dump(hit, p.length > 2 ? Integer.parseInt(p[2]) : 1) + "}");
+                break;
+            }
+            case "save": { // same call the SAVE menu entry makes
+                Object map = fget(G(), "map");
+                Method m = map.getClass().getDeclaredMethod("saveToFileNew", game);
+                m.setAccessible(true);
+                m.invoke(map, G());
+                send("{\"saved\":" + q(str(fget(map, "id"))) + "}");
                 break;
             }
             case "grid": send(grid(p.length > 1 ? Integer.parseInt(p[1]) : 8)); break;

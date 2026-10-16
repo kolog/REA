@@ -73,3 +73,7 @@ class Game(Conn):
     def act(self, name, depth=1):
         """Fields of the first action on the stack with this class name (None if absent)."""
         return self.call("act %s %d" % (name, depth))["value"]
+
+    def save(self):
+        """Write the current world to its .sav file right now."""
+        return self.call("save")
