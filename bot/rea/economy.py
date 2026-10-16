@@ -272,6 +272,11 @@ def build_at(g, tile_name, target, log=print):
     else:
         log("could not select build tile %s" % tile_name)
         return False
+    here = nav.tile_of(g.state()["player"])
+    if abs(here[0] - target[0]) + abs(here[1] - target[1]) > 8:      # approach() only sees 12 tiles around us
+        from .world import World
+        if travel.go_near(g, World(g.world()), target, dist=3, avoid_grass=True, max_legs=80) != "arrived":
+            return False
     d = recruit.approach(g, target)
     if d is None:
         return False

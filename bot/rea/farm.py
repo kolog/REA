@@ -191,40 +191,39 @@ def deploy(g, world, objs, idx, log=print, avoid=(), near=None):
     return dropped
 
 
-def recall(g, world, specie, log=print, avoid=()):
-    """Take a dropped pokemon back into the party (only possible while the party has room)."""
+def recall(g, world, specie, log=print, avoid=(), attempts=10):
+    """Take a dropped pokemon back into the party (only possible while the party has room). Wandering pokemon
+    move between interactions, so every attempt re-reads where it is."""
     s = nav.ensure_free(g)
     if len(s["player"]["party"]) >= 6:
         return False
-    mons = [m for m in g.allmons() if m[2] == "owned" and m[0] == specie]
-    if not mons:
-        return False
-    here = nav.tile_of(s["player"])
-    mons.sort(key=lambda m: abs(m[3] - here[0]) + abs(m[4] - here[1]))
-    tile = (mons[0][3], mons[0][4])
-    if travel.go_near(g, world, tile, dist=2, avoid_grass=True, max_legs=60, avoid=avoid) != "arrived":
-        return False
-    fresh = [m for m in g.allmons() if m[2] == "owned" and m[0] == specie]
-    if not fresh:
-        return False
-    tile = (fresh[0][3], fresh[0][4])
-    field.clear(g)
-    d = recruit.approach(g, tile)
-    if d is None:
-        return False
-    n = len(g.state()["player"]["party"])
-    for _ in range(3):                      # first A may only hand over a held item
+    n = len(s["player"]["party"])
+    for attempt in range(attempts):
+        mons = [m for m in g.allmons() if m[2] == "owned" and m[0] == specie]
+        if not mons:
+            return False
+        here = nav.tile_of(g.state()["player"])
+        mons.sort(key=lambda m: abs(m[3] - here[0]) + abs(m[4] - here[1]))
+        tile = (mons[0][3], mons[0][4])
+        if abs(here[0] - tile[0]) + abs(here[1] - tile[1]) > 6:
+            if travel.go_near(g, world, tile, dist=3, avoid_grass=True, max_legs=60, avoid=avoid) != "arrived":
+                return False
+            continue
+        field.clear(g)
+        d = recruit.approach(g, tile)
+        if d is None:
+            g.wait(30)
+            continue
         recruit.face(g, d)
-        g.tap("a", 2, 20)
+        g.tap("a", 2, 25)
         s = recruit.dismiss_text(g)
         if "DrawYesNoMenu" in s["actions"]:
             recruit.yes_no(g, True)
             recruit.dismiss_text(g)
-            break
-    ok = len(g.state()["player"]["party"]) > n
-    if ok:
-        log("recalled %s" % specie)
-    return ok
+        if len(g.state()["player"]["party"]) > n:
+            log("recalled %s" % specie)
+            return True
+    return False
 
 
 def relocate_far(g, world, objs, camp, log=print, avoid=(), max_dist=18):

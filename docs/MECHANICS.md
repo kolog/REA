@@ -109,3 +109,37 @@ Crafting happens at a built **campfire** (A on it).
   metal coat -> great ball; berry juice + ancientpowder -> rare candy.
 * Taking a pokemon/egg anywhere angers nearby same-species / egg-group wild pokemon (their parents hunt you):
   never pick up eggs.
+
+## Catching (Battle.java)
+* a = (3*maxHP - 2*curHP) * (catchRate * ballMult) / (3*maxHP) (HP terms /4 when 3*maxHP > 255), min 1, +10 if
+  sleep/freeze, cap 255. Caught at once with prob (a+1)/256, otherwise three shake checks against b (lookup table
+  of a): P = p1 + (1-p1)*(b/256)^3. Master ball always.
+* Ball multipliers: great 1.5, ultra 2, dusk 3.5 (night/caves), fast 4 (base speed >= 100), quick 5 (turn 1),
+  net up to 4 (WATER/BUG, grows with turns), nest (41-level)/10 (level <= 29), dream 4 (asleep), heavy +30/+20/0/-20
+  catch rate by weight, level 2/4/8 by our lead level vs theirs (>, >/2, >/4), love 8 (same species, other gender),
+  moon 4 (clefairy, jigglypuff, nidorina, nidorino). A good ball can be thrown at full HP.
+
+## Exp / evolution / lead
+* Exp after a win is split among party members with `participatedInBattle` (the pokemon that was out at any
+  point). Lead of every battle = `hmPokemon` if alive (FOLLOW or any field move) else first alive. So a weak mon
+  can lead, be swapped for a strong one, and still gain exp.
+* `Specie.gen2Evos[species] = {level: evolved}`. natu 25 -> xatu (FLY), machop 28, chikorita 16, rhyhorn 42,
+  tentacool 30, spearow 20 -> fearow (FLY), pidgey 18.
+
+## FLY
+* Party menu -> FLY word (FLY species: pidgeot aerodactyl charizard dragonair dragonite salamence ho_oh lugia
+  skarmory articuno zapdos moltres crobat noctowl xatu flygon togekiss swellow pelipper altaria rayquaza drifblim
+  honchkrow yanmega garchomp volcarona fearow mewtwo mantine toucannon noivern). While `currFieldMove == FLY`
+  wild pokemon never aggro/contact the player (Pokemon.java checks `!FLY`); B lands on a non-solid, non-ledge tile
+  with no pokemon on it. Overworld only.
+
+## Fences, doors, gates, pens
+* Wild/dropped pokemon cannot enter tiles that are solid, ledges, have another pokemon, or whose name/nameUpper
+  contains `door` or `gate`. The player can walk through gates.
+* A built `house5_door1` stands for a house door: stepping on it enters the interior map (`map.interior = true`).
+  If it has fences on both sides in a line the game converts it into `fence1gate1` (a gate; walkable, stays
+  outdoors). Fences auto-tile their names (fence1_NS, fence1_NSEW ...).
+* Pen test (Minun): 3 fences + 2 side fences + gate keeps the pokemon on its tile (stayed put for minutes), BUT the
+  pen tile itself became `fence1_NSEW` (solid) and pressing A from the gate no longer interacts with the pokemon.
+  Open question: how to collect from a fully enclosed 1x1 pen.
+* Pokemon wander widely when free (a dropped Ponyta moved ~15 tiles in minutes), so unpenned farms drift away.
