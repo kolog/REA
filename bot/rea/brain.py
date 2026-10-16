@@ -118,7 +118,7 @@ class Brain:
         danger = self.danger_tiles(s)
         for m in self.mons:
             tile = (m[3], m[4])
-            if m[0] in party_species and m[2] != "egg" or self.failed.get(("rec", m[0], tile), 0) >= 2:
+            if m[0] in party_species and m[2] != "egg" or self.failed.get(("rec", m[0], tile), 0) >= 2                     or m[0] in farm.ONLY_SWIM:
                 continue
             near = [dist[(tile[0] + dx, tile[1] + dy)] for dx, dy in nav.DIRS.values() if (tile[0] + dx, tile[1] + dy) in dist]
             if not near or min(near) > 150 or tile in danger:

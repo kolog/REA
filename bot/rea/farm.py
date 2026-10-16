@@ -23,6 +23,8 @@ UNSUPPORTED = {"BUG", "GROUND", "STEEL", "GHOST", "ICE", "DRAGON"}      # habita
 VALUE = {"magnet": 5, "hard shell": 5, "life force": 3, "metal coat": 3, "stardust": 2, "hard stone": 2,
          "charcoal": 2, "miracle seed": 2, "soft feather": 1, "poison barb": 1, "psi energy": 1,
          "binding band": 1, "dark energy": 1}
+ONLY_SWIM = {"magikarp", "gyarados", "remoraid", "chinchou", "lanturn", "goldeen", "seaking", "horsea", "seadra",
+             "kingdra", "feebas", "lapras", "carvanha", "sharpedo"}     # DROP only works on water, and they never leave it
 NEEDED_MOVES = {"BUILD", "CUT", "SMASH", "DIG", "HEADBUTT", "SURF", "FLY"}
 
 
@@ -350,6 +352,8 @@ def deploy_pen(g, world, objs, idx, log=print, avoid=(), near=None):
     """Pen spot (near the camp if possible) -> build -> drop the pokemon inside. True / False / 'interrupted'."""
     s = g.state()
     m = s["player"]["party"][idx]
+    if m["specie"] in ONLY_SWIM:
+        return deploy_water(g, world, idx, log=log, near=near)
     here = nav.tile_of(s["player"])
     hab = HabitatMap(world, objs)
     P = find_pen_spot(world, objs, m["types"], here, near=near, hab=hab) if near else None
@@ -382,4 +386,49 @@ def loose_farm_mons(mons, objs):
     """Owned, farmable pokemon walking around outside any pen: [(specie, tile)]."""
     objmap = {(o[0], o[1]): o[2] for o in objs}
     return [(m[0], (m[3], m[4])) for m in mons
-            if m[2] == "owned" and farmable_species(m) and not is_penned(objmap, (m[3], m[4]))]
+            if m[2] == "owned" and farmable_species(m) and m[0] not in ONLY_SWIM
+            and not is_penned(objmap, (m[3], m[4]))]
+
+
+def deploy_water(g, world, idx, log=print, near=None):
+    """Water-only species: stand on the shore, face real water (not tide) and DROP it there."""
+    s = nav.ensure_free(g)
+    m = s["player"]["party"][idx]
+    here = nav.tile_of(s["player"])
+    dist = world.dist_map(here)
+    best = None
+    for p, d in dist.items():
+        if world.ch(p) != ".":
+            continue
+        for dname, (dx, dy) in nav.DIRS.items():
+            wtile = (p[0] + dx, p[1] + dy)
+            if world.ch(wtile) == "w" and sum(world.ch((wtile[0] + a, wtile[1] + b)) == "w"
+                                              for a in (-1, 0, 1) for b in (-1, 0, 1)) >= 4:   # real water, not a puddle
+                score = d
+                if best is None or score < best[0]:
+                    best = (score, p, dname, wtile)
+    if best is None:
+        log("no water edge for %s" % m["specie"])
+        return False
+    _, stand, dname, wtile = best
+    log("dropping %s into the water at %s (from %s)" % (m["specie"], wtile, stand))
+    r = economy.reach(g, world, stand, dist=0, log=log)
+    if r != "arrived":
+        return False
+    field.clear(g)
+    recruit.face(g, dname)
+    n = len(g.state()["player"]["party"])
+    idx = next((i for i, x in enumerate(g.state()["player"]["party"]) if x["specie"] == m["specie"]), idx)
+    if not field.party_action(g, idx, "DROP", log):
+        return False
+    for _ in range(30):
+        s = g.state()
+        if "DrawYesNoMenu" in s["actions"]:
+            recruit.yes_no(g, True)
+        elif "DisplayText" in s["actions"]:
+            g.tap("a", 2, 14)
+        elif "PlayerStanding" in s["actions"] and not any("Menu" in a for a in s["actions"]):
+            break
+        else:
+            g.wait(8)
+    return len(g.state()["player"]["party"]) < n

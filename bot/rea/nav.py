@@ -88,6 +88,10 @@ def is_free(s):
         a in s["actions"] for a in ("DisplayText", "DrawBattle", "DrawAttacksMenu", "DrawPlayerMenu"))
 
 
+_BG = {"DrawReflections", "DrawMap", "DrawPokemonLowers", "DrawMapGrass", "DrawMapTrees", "DrawBuildTile",
+       "DrawBuildRequirements"}
+
+
 def ensure_outside(g, tries=4):
     """Leave a house interior: walk to the door tile first (the only exit), then step down."""
     s = g.state()
@@ -127,7 +131,17 @@ def ensure_free(g, tries=25, allow_interior=False):
     if not allow_interior and s.get("map", {}).get("interior") and is_free(s):
         s = ensure_outside(g)
     for _ in range(tries):
-        if is_free(s) or "DrawBattle" in s["actions"]:
+        if "DrawBattle" in s["actions"]:
+            return s
+        if is_free(s):
+            if not s.get("playerCanMove", True) and not any(a.startswith(("DisplayText", "Draw")) and a not in _BG for a in s["actions"]):
+                # a refused menu action can leave playerCanMove stuck at false: open and close the Start menu to reset it
+                g.wait(30)
+                s = g.state()
+                if not s.get("playerCanMove", True) and is_free(s):
+                    g.tap("start", 2, 30)
+                    g.tap("b", 2, 30)
+                    s = g.state()
             return s
         acts = s["actions"]
         if "DrawYesNoMenu" in acts:
