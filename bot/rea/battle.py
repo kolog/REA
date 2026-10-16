@@ -216,7 +216,7 @@ def decide(s, switched_recently=False, allow_ball=True):
     if allow_ball and want_catch(s) and hpf > 0.25:
         ball, p = best_ball(s)
         # a good ball for this level can be thrown at full hp; otherwise weaken it first
-        if p >= 0.5 or (p >= 0.12 and (ohp <= 0.5 or opp["status"] not in ("", None))):
+        if p >= 0.75 or (p >= 0.12 and (ohp <= 0.5 or opp["status"] not in ("", None))):
             return "ball", ball
     # a clearly better mon is waiting: swap, unless we just did (avoid ping-pong) or we are about to win anyway
     if best_i != cur_i and not switched_recently and best_v > max(1.6 * cur_v, 0.8) and turns_to_kill > 1.5:
