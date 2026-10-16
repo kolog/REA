@@ -28,6 +28,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  *   state                       -> snapshot at next frame boundary
  *   do <keys|-> <frames>        -> hold keys (a+b+up+...) for N frames, then snapshot
  *   walk <dir,dir,...>          -> continuous walk; snapshot has walk.result ok|blocked|interrupted
+ *   act <ClassName> [depth]     -> dump the first stack action with that simple name
  *   grid <radius>               -> tiles around the player
  *   get <path> [depth]          -> reflective inspect, path like "player.pokemon.0"
  *   type <text>                 -> feed characters to the active text field
@@ -207,6 +208,17 @@ public final class Agent {
                 pidx = 0; stall = 0; lastX = lastY = -99999;
                 break;
             }
+            case "act": { // dump the first action on the stack with this simple class name
+                List<?> acts = (List<?>) fget(G(), "actionStack");
+                Object hit = null;
+                for (Object a : new ArrayList<>(acts)) {
+                    if (a == null) continue;
+                    String n = a.getClass().getName();
+                    if (n.substring(n.lastIndexOf('.') + 1).equals(p[1])) { hit = a; break; }
+                }
+                send("{\"value\":" + dump(hit, p.length > 2 ? Integer.parseInt(p[2]) : 1) + "}");
+                break;
+            }
             case "grid": send(grid(p.length > 1 ? Integer.parseInt(p[1]) : 8)); break;
             case "get": send(inspect(p[1], p.length > 2 ? Integer.parseInt(p[2]) : 2)); break;
             default: send("{\"error\":\"unknown command\"}");
@@ -352,6 +364,9 @@ public final class Agent {
                     if (Boolean.TRUE.equals(fget(t, f))) sb.append(",\"").append(f.substring(2).toLowerCase()).append("\":1");
                 String led = str(fget(t, "ledgeDir"));
                 if (!led.isEmpty()) sb.append(",\"ledge\":").append(q(led));
+                Object rt = fget(t, "routeBelongsTo");
+                if (rt != null) sb.append(",\"rl\":").append(fget(rt, "level")).append(",\"rn\":").append(q(str(fget(rt, "name"))));
+                if (Boolean.TRUE.equals(fget(t, "isTidal"))) sb.append(",\"tidal\":1");
                 String it = str(fget(t, "hasItem"));
                 if (!it.isEmpty()) sb.append(",\"item\":").append(q(it));
                 sb.append("}");

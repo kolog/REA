@@ -8,7 +8,10 @@ OPP = {"up": "down", "down": "up", "left": "right", "right": "left"}
 class Grid:
     """Local tile window around the player, indexed by integer tile coords (tx, ty); y grows upward."""
 
-    def __init__(self, resp, mons=()):
+    def __init__(self, resp, mons=(), max_level=None, avoid_grass=False, blocked=()):
+        self.blocked = set(blocked)       # tiles we learned to stay away from
+        self.max_level = max_level        # refuse tiles of routes above this level
+        self.avoid_grass = avoid_grass    # treat grass (wild encounters) as a wall
         self.r = resp["r"]
         self.cx = int(round(resp["px"] / 16))
         self.cy = int(round(resp["py"] / 16))
@@ -26,7 +29,9 @@ class Grid:
 
     def passable(self, p, move_dir=None):
         t = self.tiles.get(p)
-        if t is None or p in self.mons:
+        if t is None or p in self.mons or p in self.blocked:
+            return False
+        if self.avoid_grass and t.get("grass") and not t.get("tidal"):
             return False
         if t.get("solid") or t.get("water") or t.get("lava") or t.get("ledge") or t.get("waterfall"):
             return False
@@ -34,7 +39,10 @@ class Grid:
 
     def cost(self, p):
         t = self.tiles[p]
-        return 3.0 if t.get("grass") else 1.0
+        c = 1.0 if t.get("tidal") else (6.0 if t.get("grass") else 1.0)
+        if self.max_level is not None and t.get("rl", 0) > self.max_level:
+            c += 10.0         # too dangerous: allowed only as a way out
+        return c
 
     def astar(self, start, goal_fn, h=None):
         """Path of directions from start to the nearest tile satisfying goal_fn (or None)."""
@@ -108,7 +116,7 @@ def settle(g, frames=60):
     return s
 
 
-def goto(g, goal, radius=20, max_replans=60, leg=6):
+def goto(g, goal, radius=20, max_replans=60, leg=6, policy=None):
     """Walk to tile `goal` (tx, ty). Returns (arrived, last_state)."""
     s = g.state()
     for _ in range(max_replans):
@@ -117,7 +125,7 @@ def goto(g, goal, radius=20, max_replans=60, leg=6):
         here = tile_of(s["player"])
         if here == goal:
             return True, s
-        grid = Grid(g.grid(radius), s["map"]["mons"])
+        grid = Grid(g.grid(radius), s["map"]["mons"], **(policy or {}))
         path = grid.astar(here, lambda p: p == goal,
                           h=lambda p: abs(p[0] - goal[0]) + abs(p[1] - goal[1]))
         if not path:

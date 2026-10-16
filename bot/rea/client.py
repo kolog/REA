@@ -69,3 +69,7 @@ class Game(Conn):
 
     def get(self, path, depth=2):
         return self.call("get %s %d" % (path, depth))["value"]
+
+    def act(self, name, depth=1):
+        """Fields of the first action on the stack with this class name (None if absent)."""
+        return self.call("act %s %d" % (name, depth))["value"]
