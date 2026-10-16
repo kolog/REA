@@ -234,14 +234,8 @@ class Brain:
         origin = (door[0] - 2, door[1]) if door else None
         if balls >= 20 and apr == 0:
             return False
-        if apr + balls < 14 and self.failed.get("apricorns", 0) < 4:
-            before = self.apricorns(s)
-            economy.gather(self.g, self.world, {"apricorn": min(10, 16 - balls - apr) + apr}, "CUT", log=self.log, max_trips=14)
-            field.clear(self.g)
-            if self.apricorns(self.g.state()) <= before:
-                self.failed["apricorns"] = self.failed.get("apricorns", 0) + 1
-            return True
-        if apr > 0 or (items.get("magnet", 0) and items.get("hard shell", 0)):
+        pairs0 = min(items.get("magnet", 0) - items.get("fast ball", 0), items.get("hard shell", 0))
+        if apr >= 4 or pairs0 > 0 or (apr > 0 and balls == 0):
             if economy.open_crafts(self.g, self.camp):
                 for apri, ball in BALL_FOR.items():
                     n = self.g.state()["player"]["items"].get(apri, 0)
@@ -254,6 +248,13 @@ class Brain:
                     self.stats["crafted"] += economy.craft(self.g, "poké ball", pairs, log=self.log)
                 economy.close_crafts(self.g)
                 self.trainer.checkpoint(True)
+            return True
+        if apr + balls < 14 and self.failed.get("apricorns", 0) < 4:
+            before = self.apricorns(s)
+            economy.gather(self.g, self.world, {"apricorn": min(10, 16 - balls - apr) + apr}, "CUT", log=self.log, max_trips=14)
+            field.clear(self.g)
+            if self.apricorns(self.g.state()) <= before:
+                self.failed["apricorns"] = self.failed.get("apricorns", 0) + 1
             return True
         it = items
         n = min(it.get("fast ball", 0), it.get("magnet", 0))
