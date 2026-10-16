@@ -20,6 +20,9 @@ MOVE_VALUE = {"SMASH": 6, "SURF": 6, "DIG": 4, "FLY": 5, "HEADBUTT": 3, "CUT": 2
               "RIDE": 1, "FLASH": 1, "CHARM": 1, "TELEPORT": 1, "ATTACK": 1}
 
 
+GHOST_BIOMES = {"deep_forest", "graveyard", "wooded_lake"}
+
+
 class Brain:
     def __init__(self, g, log=print):
         self.g = g
@@ -55,6 +58,18 @@ class Brain:
                     for dy in range(-r, r + 1):
                         out.add((m[3] + dx, m[4] + dy))
         return out
+
+    def ghost_exposed(self, s):
+        """Night in a ghost biome, away from light (campfire/torch/FLASH mon within 4 tiles) and not flying."""
+        m = s["map"]
+        if m.get("time") != "night" or m.get("biome") not in GHOST_BIOMES or s["player"]["field"] == "FLY":
+            return False
+        here = nav.tile_of(s["player"])
+        lit = any(("campfire" in o[2] or "torch" in o[2]) and abs(o[0] - here[0]) <= 4 and abs(o[1] - here[1]) <= 4
+                  for o in self.objs)
+        follower = s["player"]["hm"]
+        flash = follower >= 0 and "FLASH" in s["player"]["party"][follower].get("hms", [])
+        return not (lit or flash)
 
     def known_moves(self, s):
         return {h for m in s["player"]["party"] for h in m.get("hms", [])}
@@ -135,11 +150,30 @@ class Brain:
             farm.collect(self.g, self.world, self.mons, log=self.log, avoid=danger)
             self.stats["harvests"] = self.stats.get("harvests", 0) + 1
             return True
-        if self.camp is not None and farm.relocate_far(self.g, self.world, self.objs, self.camp, log=self.log, avoid=danger):
-            return True
+        # every farm animal that walks around loose gets a pen (they wander far otherwise)
+        loose = farm.loose_farm_mons(self.mons, self.objs)
+        party_species = {m["specie"] for m in s["player"]["party"]}
+        if loose and self.camp is not None and self.failed.get("penning", 0) < 6:
+            specie, tile = loose[0]
+            if specie not in party_species and len(s["player"]["party"]) < 6:
+                self.log("bringing %s to a pen" % specie)
+                if not farm.recall(self.g, self.world, specie, log=self.log, avoid=danger):
+                    self.failed["penning"] = self.failed.get("penning", 0) + 1
+                    return True
+                s = self.g.state()
+            if specie in {m["specie"] for m in s["player"]["party"]}:
+                idx = next(i for i, m in enumerate(s["player"]["party"]) if m["specie"] == specie)
+                r = farm.deploy_pen(self.g, self.world, self.g.objects(), idx, log=self.log, avoid=danger, near=self.camp)
+                if r is True:
+                    self.stats["penned"] = self.stats.get("penned", 0) + 1
+                    self.trainer.checkpoint(True)
+                elif r is False:
+                    self.failed["penning"] = self.failed.get("penning", 0) + 1
+                self.refresh(True)
+                return True
         idx = farm.deployable(s)
         if idx is not None and self.failed.get(("deploy", s["player"]["party"][idx]["specie"]), 0) < 2:
-            ok = farm.deploy(self.g, self.world, self.objs, idx, log=self.log, avoid=danger, near=self.camp)
+            ok = farm.deploy_pen(self.g, self.world, self.objs, idx, log=self.log, avoid=danger, near=self.camp)
             if ok is True:
                 self.stats["deployed"] = self.stats.get("deployed", 0) + 1
                 self.trainer.checkpoint(True)
@@ -245,6 +279,10 @@ class Brain:
         if self.goal_rest(s):
             return g.state()
         self.refresh()
+        if self.camp is not None and self.ghost_exposed(s):
+            self.log("night in %s without light: going back to the camp" % s["map"]["biome"])
+            travel.go_near(g, self.world, self.camp, dist=2, avoid_grass=True, max_legs=40, avoid=self.danger_tiles(s))
+            return g.state()
         for goal in (self.goal_farm, self.goal_recruit, self.goal_pickup, self.goal_supplies, self.goal_house):
             s = nav.ensure_free(g)
             if battle.in_battle(s):

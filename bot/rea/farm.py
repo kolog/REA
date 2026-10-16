@@ -299,6 +299,11 @@ def build_pen(g, world, objs, P, log=print, avoid=()):
     if have.get(gate, "") == "" and not economy.build_at(g, "house5_door1", gate, log=log):
         log("pen: could not build the gate at %s" % (gate,))
         return False
+    # the two fences beside the gate only served to turn the door into a gate: cut them and get the material back
+    for flank in (fences[3], fences[4]):
+        now = {(o[0], o[1]): o[2] for o in g.objects()}
+        if "gate" in now.get(gate, "") and "fence" in now.get(flank, ""):
+            economy.cut_tile(g, world, flank, "CUT", log)
     return True
 
 
@@ -364,3 +369,17 @@ def deploy_pen(g, world, objs, idx, log=print, avoid=(), near=None):
     if ok:
         log("%s is penned at %s" % (m["specie"], P))
     return ok
+
+
+def is_penned(objmap, tile):
+    """True when `tile` is a pen cell: fences N/E/W and a gate to the south."""
+    x, y = tile
+    return (all("fence" in objmap.get(c, "") for c in [(x, y + 1), (x + 1, y), (x - 1, y)])
+            and "gate" in objmap.get((x, y - 1), ""))
+
+
+def loose_farm_mons(mons, objs):
+    """Owned, farmable pokemon walking around outside any pen: [(specie, tile)]."""
+    objmap = {(o[0], o[1]): o[2] for o in objs}
+    return [(m[0], (m[3], m[4])) for m in mons
+            if m[2] == "owned" and farmable_species(m) and not is_penned(objmap, (m[3], m[4]))]

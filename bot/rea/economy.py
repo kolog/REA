@@ -305,8 +305,10 @@ def build_at(g, tile_name, target, log=print):
     here = nav.tile_of(g.state()["player"])
     if abs(here[0] - target[0]) + abs(here[1] - target[1]) > 8:      # approach() only sees 12 tiles around us
         from .world import World
-        if travel.go_near(g, World(g.world()), target, dist=3, avoid_grass=True, max_legs=80) != "arrived":
+        if reach(g, World(g.world()), target, dist=3, log=log) != "arrived":
             return False
+        if g.state()["player"]["building"] == "":                 # a fight may have cleared the field move
+            return build_at(g, tile_name, target, log)
     d = recruit.approach(g, target)
     if d is None:
         return False
@@ -326,6 +328,19 @@ def build_at(g, tile_name, target, log=print):
     return bool(spent)
 
 
+def reach(g, world, tile, dist=1, avoid=(), log=print, tries=6):
+    """Walk to within `dist` of `tile`, fighting whatever interrupts and then continuing."""
+    r = "timeout"
+    for _ in range(tries):
+        r = travel.go_near(g, world, tile, dist=dist, avoid_grass=True, max_legs=60, avoid=avoid)
+        if r == "battle":
+            battle.run_battle(g, log=log)
+            nav.ensure_free(g)
+            continue
+        return r
+    return r
+
+
 def cut_tile(g, world, tile, move, log=print, avoid=()):
     """Remove the vegetation/rock on `tile` with `move` (CUT/SMASH); returns True if the object is gone."""
     s = nav.ensure_free(g)
@@ -335,8 +350,13 @@ def cut_tile(g, world, tile, move, log=print, avoid=()):
     if s["player"]["field"] != move or s["player"]["hm"] != idx:
         if not field.select(g, idx, move, log):
             return False
-    if travel.go_near(g, world, tile, dist=1, avoid_grass=True, max_legs=40, avoid=avoid) != "arrived":
+    if reach(g, world, tile, dist=1, avoid=avoid, log=log) != "arrived":
         return False
+    s = nav.ensure_free(g)
+    if s["player"]["field"] != move:                  # a fight on the way may have cleared the field move
+        idx = party_with(s, move)
+        if idx is None or not field.select(g, idx, move, log):
+            return False
     d = recruit.approach(g, tile)
     if d is None:
         return False
@@ -350,7 +370,7 @@ def cut_tile(g, world, tile, move, log=print, avoid=()):
             g.wait(20)
         else:
             break
-    return not any((o[0], o[1]) == tile and o[2] in YIELD for o in g.objects())
+    return not any((o[0], o[1]) == tile for o in g.objects())
 
 
 def clear_area(g, world, center, r=3, log=print, avoid=()):

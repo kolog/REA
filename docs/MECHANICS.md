@@ -185,3 +185,13 @@ by ground type (grass, soft sand, light clay, dry soil, damp soil ...). `*_crack
 fences N/E/W of the pen tile, gate (door between two fences) on the south side with two flanking fences; stand
 on the gate to CUT the fence the game puts on the enclosed tile, then DROP the pokemon from the gate. Collect by
 facing the pokemon from the gate. Works for the Ponyta next to the campfire (FIRE habitat).
+
+## Ghosts at night (CycleDayNight, DrawGhost, Player.checkNearCampfire)
+A ghost spawns only at night, in deep_forest / graveyard / wooded_lake biomes, when the player can move and is not
+"near a campfire" (countdown 1000-3000 frames; Cacturne in deserts similarly). Near-campfire = within +-4 tiles of a
+`campfire` tile, a tile with a torch, or ANY pokemon (wild/owned/follower) that knows FLASH (fire types, chinchou,
+lanturn, mareep line ...). A follower with FLASH repels a ghost within 64 px; flying (FLY) makes the player untouchable.
+
+## Pens: the two fences beside the gate can be cut afterwards
+Once the door has become a gate, cutting the two flanking fences (CUT) leaves the gate intact and refunds the
+material: the final pen is 3 fences (N/E/W) + 1 gate (S).
