@@ -39,9 +39,10 @@ def mon_tile(m):
 
 
 def face(g, d):
-    """Turn towards direction d without moving (the target tile is occupied, so we just bump)."""
-    g.hold(d, 6)
-    return g.wait(6)
+    """Turn towards direction d without stepping: the game only walks after the key was held for >3 frames,
+    so a 2-frame tap just changes the facing (also works when the target tile is walkable, e.g. grass)."""
+    g.hold(d, 2)
+    return g.wait(8)
 
 
 def approach(g, target, radius=12, policy=None):

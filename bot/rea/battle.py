@@ -1,9 +1,15 @@
 """Battle brain (M2): reads game state, picks FIGHT / RUN, drives the menus."""
 import time
 
+from . import items as _items
+
+BALLS = ["master ball", "ultra ball", "great ball", "poké ball", "heavy ball", "fast ball", "love ball",
+         "level ball", "moon ball", "lure ball", "friend ball", "net ball", "dive ball", "quick ball",
+         "heal ball", "nest ball", "dusk ball", "dream ball", "timer ball"]
 MENU = "DrawBattleMenuNormal"
 ATTACKS = "DrawAttacksMenu"
 ATK_CURR = "class:com.pkmngen.game.DrawAttacksMenu#curr"
+PM_CURR = "class:com.pkmngen.game.DrawPokemonMenu#currIndex"
 CELL_XY = {"tl": (0, 0), "tr": (1, 0), "bl": (0, 1), "br": (1, 1)}
 
 
@@ -69,18 +75,64 @@ def hp(p):
     return p["stats"]["hp"], p["max"]["hp"]
 
 
-def decide(s):
-    """Returns ('fight', move_index) or ('run', None)."""
-    party = s["player"]["party"]
-    me = party[s["player"]["curr"]] if 0 <= s["player"]["curr"] < len(party) else party[0]
-    opp = s["battle"]["opp"]
-    cur, mx = hp(me)
+def matchup(me, opp):
+    """(damage we deal per turn as a share of the opponent's hp, damage we take per turn as a share of our hp)."""
     mi, dmg = best_move(me, opp)
     t = threat(opp, me)
-    ohp = opp["stats"]["hp"]
-    turns_to_kill = ohp / dmg if dmg > 0 else 99
-    turns_to_die = cur / t if t > 0 else 99
-    if opp["lvl"] > me["lvl"] + 6 or (turns_to_die < 2 and turns_to_kill > 1.2) or cur < 0.25 * mx:
+    off = dmg / max(1, opp["stats"]["hp"])
+    risk = t / max(1, me["stats"]["hp"])
+    return mi, off, risk
+
+
+def value(me, opp):
+    """Higher is better: how decisively `me` beats `opp` (0 when fainted)."""
+    if me["stats"]["hp"] <= 0 or me.get("egg"):
+        return 0.0
+    _, off, risk = matchup(me, opp)
+    return off / max(risk, 0.04)
+
+
+def best_ball(s):
+    have = s["player"]["items"]
+    return next((b for b in BALLS if have.get(b, 0) > 0), None)
+
+
+def want_catch(s):
+    """Catch new species when there is room, a ball, and the target is not wildly out of our league."""
+    party = s["player"]["party"]
+    opp = s["battle"].get("opp")
+    if not opp or len(party) >= 6 or best_ball(s) is None:
+        return False
+    if opp["specie"] in {m["specie"] for m in party}:
+        return False
+    return opp["lvl"] <= max(m["lvl"] for m in party) + 10
+
+
+def decide(s, switched_recently=False, allow_ball=True):
+    """Returns ('fight', move_index) | ('switch', party_index) | ('run', None)."""
+    party = s["player"]["party"]
+    cur_i = s["player"]["curr"] if 0 <= s["player"]["curr"] < len(party) else 0
+    me = party[cur_i]
+    opp = s["battle"]["opp"]
+    mi, off, risk = matchup(me, opp)
+    cur_v = value(me, opp)
+    best_i, best_v = cur_i, cur_v
+    for i, m in enumerate(party):
+        if i != cur_i and value(m, opp) > best_v:
+            best_i, best_v = i, value(m, opp)
+    hpf = me["stats"]["hp"] / max(1, me["max"]["hp"])
+    turns_to_die = 1.0 / risk if risk > 0 else 99
+    turns_to_kill = 1.0 / off if off > 0 else 99
+    losing = turns_to_die < 2 and turns_to_kill > 1.2
+    ohp = opp["stats"]["hp"] / max(1, opp["max"]["hp"])
+    if allow_ball and want_catch(s) and (ohp <= 0.5 or opp["status"] not in ("", None) or turns_to_kill <= 1.3) and hpf > 0.25:
+        return "ball", best_ball(s)
+    # a clearly better mon is waiting: swap, unless we just did (avoid ping-pong) or we are about to win anyway
+    if best_i != cur_i and not switched_recently and best_v > max(1.6 * cur_v, 0.8) and turns_to_kill > 1.5:
+        return "switch", best_i
+    if best_i != cur_i and not switched_recently and (losing or hpf < 0.25) and best_v > 0.6:
+        return "switch", best_i
+    if opp["lvl"] > me["lvl"] + 8 or losing or hpf < 0.2:
         return "run", None
     return "fight", mi
 
@@ -98,26 +150,101 @@ def _cell_move(g, name, target):
             g.tap("right" if tx > cx else "left", 2, 4)
 
 
+def throw_ball(g, ball):
+    """From the battle main menu: ITEM -> ball -> USE."""
+    _cell_move(g, MENU, "bl")
+    g.tap("a", 2, 14)
+    for _ in range(80):
+        m = g.act("DrawItemMenuGen2", 1)
+        if m is not None and not m.get("disabled"):
+            break
+        g.wait(4)
+    else:
+        return False
+    g.wait(10)
+    if not _items.select_item(g, ball):
+        g.tap("b", 2, 14)
+        return False
+    for _ in range(40):
+        if "DrawUseTossMenu" in g.state()["actions"]:
+            break
+        g.wait(4)
+    else:
+        return False
+    g.wait(10)
+    g.tap("a", 2, 14)                 # USE
+    return True
+
+
+def switch_to(g, idx):
+    """From the battle main menu: POKeMON -> member idx -> SWITCH. Returns True if the menu flow completed."""
+    _cell_move(g, MENU, "tr")
+    g.tap("a", 2, 14)
+    for _ in range(60):
+        m = g.act("DrawPokemonMenu", 1)
+        if m is not None and not m.get("disabled"):
+            break
+        g.wait(4)
+    else:
+        return False
+    g.wait(16)
+    for _ in range(8):
+        cur = g.get(PM_CURR)
+        if cur == idx:
+            break
+        g.tap("down" if idx > cur else "up", 2, 8)
+    g.tap("a", 2, 12)
+    sel = None
+    for _ in range(40):
+        sel = g.act("DrawPokemonMenu$SelectedMenu", 2)
+        if sel is not None:
+            break
+        g.wait(4)
+    if sel is None or "SWITCH" not in sel["words"]:
+        g.tap("b", 2, 12)
+        return False
+    target = sel["words"].index("SWITCH")
+    for _ in range(6):
+        cur = g.act("DrawPokemonMenu$SelectedMenu", 1)["curr"]
+        if cur == target:
+            break
+        g.tap("down" if target > cur else "up", 2, 8)
+    g.tap("a", 2, 14)
+    return True
+
+
 def run_battle(g, log=print, max_seconds=300):
     """Plays one battle to the end. Returns summary dict."""
     Data.load(g)
     t0 = time.time()
     s = g.state()
-    turns, decided, idle = 0, None, 0
+    turns, decided, idle, last_switch, banned_ball = 0, None, 0, -10, False
     while in_battle(s) and time.time() - t0 < max_seconds:
         acts = s["actions"]
         if MENU in acts:
-            decided, mi = decide(s)
+            decided, arg = decide(s, switched_recently=(turns - last_switch) < 3, allow_ball=not banned_ball)
             me = s["player"]["party"][max(0, s["player"]["curr"])]
             opp = s["battle"]["opp"]
+            what = (me["moves"][arg] if decided == "fight" else
+                    s["player"]["party"][arg]["specie"] if decided == "switch" else arg if decided == "ball" else "")
             log("turn %d: %s L%d (%d/%d) vs %s L%d (%d/%d) -> %s %s" % (
                 turns + 1, me["specie"], me["lvl"], *hp(me), opp["specie"], opp["lvl"],
-                opp["stats"]["hp"], opp["max"]["hp"], decided, me["moves"][mi] if mi is not None else ""))
+                opp["stats"]["hp"], opp["max"]["hp"], decided, what))
             turns += 1
-            if decided == "run":
+            if decided == "ball":
+                if not throw_ball(g, arg):
+                    g.tap("b", 2, 12)
+                    banned_ball = True
+            elif decided == "switch":
+                last_switch = turns
+                if not switch_to(g, arg):
+                    last_switch = turns + 10          # menu flow failed: do not try again this fight
+                    g.tap("b", 2, 12)
+            elif decided == "run":
                 _cell_move(g, MENU, "br")
                 g.tap("a", 2, 10)
             else:
+                mi = arg
                 _cell_move(g, MENU, "tl")
                 g.tap("a", 2, 14)
                 for _ in range(40):  # wait for the attack list
@@ -138,7 +265,28 @@ def run_battle(g, log=print, max_seconds=300):
         elif "DrawYesNoMenu" in acts:
             g.tap("b", 2, 10)          # "No" to switch / learn prompts
         elif "DrawPokemonMenu" in acts:
-            g.tap("a", 2, 10)          # forced switch: take the highlighted mon
+            # forced switch (our mon fainted): send the best remaining one
+            opp = s.get("battle", {}).get("opp")
+            party = s["player"]["party"]
+            alive = [i for i, m in enumerate(party) if m["stats"]["hp"] > 0 and not m.get("egg")]
+            if not alive:
+                g.tap("a", 2, 10)
+            else:
+                idx = max(alive, key=lambda i: value(party[i], opp)) if opp else alive[0]
+                for _ in range(8):
+                    cur = g.get(PM_CURR)
+                    if cur == idx:
+                        break
+                    g.tap("down" if idx > cur else "up", 2, 8)
+                g.tap("a", 2, 12)
+                sel = g.act("DrawPokemonMenu$SelectedMenu", 2)
+                if sel is not None and "SWITCH" in sel["words"]:
+                    for _ in range(4):
+                        c = g.act("DrawPokemonMenu$SelectedMenu", 1)["curr"]
+                        if c == sel["words"].index("SWITCH"):
+                            break
+                        g.tap("down", 2, 8)
+                    g.tap("a", 2, 12)
         elif "DisplayText" in acts or any("ShowLevelUpStats" in a or "Evolution" in a for a in acts):
             g.tap("a", 2, 8)
             idle = 0

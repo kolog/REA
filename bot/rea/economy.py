@@ -1,5 +1,5 @@
 """Resource gathering, building and crafting (M3). Yields come from Tile.items() in the decompiled game."""
-from . import field, nav, recruit, travel
+from . import battle, field, nav, recruit, travel
 
 # nameUpper -> (field move needed, items it yields). Apricorns are random (50 %), listed as "apricorn".
 YIELD = {
@@ -79,7 +79,10 @@ def gather(g, world, need, move="CUT", log=print, max_trips=40):
     """Collect resources until `need` ({item: amount}) is met. Returns True when it is."""
     skip = set()
     for _ in range(max_trips):
-        s = g.state()
+        s = nav.ensure_free(g)
+        if battle.in_battle(s):
+            battle.run_battle(g, log=log)
+            continue
         lack = missing(inv(s), need)
         if not lack:
             return True
@@ -98,7 +101,7 @@ def gather(g, world, need, move="CUT", log=print, max_trips=40):
         tile = (o[0], o[1])
         r = travel.go_near(g, world, tile, dist=1, max_level=None)
         if r == "battle":
-            return False
+            continue
         d = recruit.approach(g, tile)
         if d is None:
             skip.add(tile)
@@ -120,3 +123,135 @@ def gather(g, world, need, move="CUT", log=print, max_trips=40):
         if got:
             log("gathered %s from %s" % (got, o[2]))
     return not missing(inv(g.state()), need)
+
+
+def free_neighbor(g, avoid_grass=True):
+    """Direction of an adjacent empty, walkable tile (nothing built/grown on it), or None."""
+    s = g.state()
+    here = nav.tile_of(s["player"])
+    grid = nav.Grid(g.grid(2), s["map"]["mons"])
+    for d, (dx, dy) in nav.DIRS.items():
+        p = (here[0] + dx, here[1] + dy)
+        t = grid.get(p)
+        if t and grid.passable(p) and not t.get("u") and not t.get("item") and not (avoid_grass and t.get("grass")):
+            return d
+    return None
+
+
+def build(g, tile_name, log=print):
+    """Use BUILD (a FIGHTING-type member) to place `tile_name` (e.g. 'campfire1') on an adjacent free tile."""
+    s = nav.ensure_free(g)
+    idx = party_with(s, "BUILD")
+    if idx is None:
+        log("no BUILD pokemon")
+        return False
+    if not field.select(g, idx, "BUILD", log):
+        return False
+    for _ in range(40):
+        if g.state()["player"]["building"] == tile_name:
+            break
+        g.tap("r", 2, 8)
+    else:
+        log("could not select build tile %s" % tile_name)
+        return False
+    d = free_neighbor(g)
+    if d is None:
+        log("no free tile next to me")
+        return False
+    recruit.face(g, d)
+    before = dict(g.state()["player"]["items"])
+    g.tap("a", 2, 40)
+    for _ in range(8):
+        s = g.state()
+        if "DisplayText" in s["actions"]:
+            g.tap("a", 2, 14)
+        else:
+            g.wait(15)
+    after = g.state()["player"]["items"]
+    spent = {k: before[k] - after.get(k, 0) for k in before if before[k] != after.get(k, 0)}
+    log("built %s, spent %s" % (tile_name, spent))
+    return bool(spent)
+
+
+def open_crafts(g, camp):
+    """Walk next to the campfire at tile `camp`, face it and open the crafting menu."""
+    field.clear(g)
+    d = recruit.approach(g, camp)
+    if d is None:
+        return False
+    recruit.face(g, d)
+    g.tap("a", 2, 30)
+    for _ in range(40):
+        if "DrawCraftsMenu" in g.state()["actions"]:
+            g.wait(20)
+            return True
+        g.wait(8)
+    return False
+
+
+def craft(g, name, amount=1, log=print):
+    """With the crafts menu open: make `amount` of `name`. Returns the amount gained."""
+    for _ in range(40):                                  # wait until the list accepts input again
+        m = g.act("DrawCraftsMenu", 1)
+        if m is not None and not m.get("disabled"):
+            break
+        g.wait(6)
+    g.wait(10)
+    m = g.act("DrawCraftsMenu", 2)
+    if m is None:
+        return 0
+    lst = m["craftsList"]
+    if name not in lst:
+        log("%s is not craftable here" % name)
+        return 0
+    t = lst.index(name)
+
+    def where():
+        c = g.act("DrawCraftsMenu", 1)["currCraft"]
+        return lst.index(c) if c in lst else len(lst) - 1      # '' is the Cancel row
+    for _ in range(60):
+        cur = where()
+        if cur == t:
+            break
+        g.tap("down" if t > cur else "up", 2, 10)
+    else:
+        log("could not reach %s in the craft list" % name)
+        return 0
+    before = dict(g.state()["player"]["items"])
+    g.tap("a", 2, 20)
+    for _ in range(30):                                  # SelectAmount menu
+        if "DrawCraftsMenu$SelectAmount" in g.state()["actions"]:
+            break
+        g.wait(6)
+    else:
+        return 0
+    for _ in range(amount - 1):
+        g.tap("up", 2, 6)
+    g.tap("a", 2, 20)
+    for _ in range(30):                                  # CRAFT / CANCEL confirmation (cursor starts on CRAFT)
+        if "DrawCraftsMenu$Selected" in g.state()["actions"]:
+            break
+        g.wait(6)
+    g.wait(12)
+    g.tap("a", 2, 20)
+    for _ in range(40):                                  # "crafted" text and back to the list
+        s = g.state()
+        if "DisplayText" in s["actions"]:
+            g.tap("a", 2, 14)
+        elif "DrawCraftsMenu" in s["actions"] and not any(a in s["actions"] for a in ("DrawCraftsMenu$SelectAmount", "DrawCraftsMenu$Selected")):
+            break
+        else:
+            g.wait(8)
+    after = g.state()["player"]["items"]
+    gained = after.get(name, 0) - before.get(name, 0)
+    log("crafted %s x%d" % (name, gained))
+    return gained
+
+
+def close_crafts(g):
+    for _ in range(6):
+        s = g.state()
+        if any(a.startswith("DrawCraftsMenu") for a in s["actions"]):
+            g.tap("b", 2, 14)
+        else:
+            return
