@@ -30,6 +30,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  *   walk <dir,dir,...>          -> continuous walk; snapshot has walk.result ok|blocked|interrupted
  *   act <ClassName> [depth]     -> dump the first stack action with that simple name
  *   save                        -> write the world save now
+ *   world                       -> whole tile map, one char per tile (see world())
  *   grid <radius>               -> tiles around the player
  *   get <path> [depth]          -> reflective inspect, path like "player.pokemon.0"
  *   type <text>                 -> feed characters to the active text field
@@ -228,6 +229,7 @@ public final class Agent {
                 send("{\"saved\":" + q(str(fget(map, "id"))) + "}");
                 break;
             }
+            case "world": send(world()); break;
             case "grid": send(grid(p.length > 1 ? Integer.parseInt(p[1]) : 8)); break;
             case "get": send(inspect(p[1], p.length > 2 ? Integer.parseInt(p[2]) : 2)); break;
             default: send("{\"error\":\"unknown command\"}");
@@ -381,6 +383,53 @@ public final class Agent {
                 sb.append("}");
             }
         }
+        return sb.append("]}").toString();
+    }
+
+    /**
+     * Whole terrain in one shot. Rows run from the top (max y) to the bottom, columns from min x.
+     * Chars: ' ' no tile, '#' blocked, '.' free, 'g' grass, 't' tidal grass, 'l' ledge, 'w' water,
+     * 'e' door/entrance. "lv" holds the route level per tile as two decimal digits.
+     */
+    static String world() throws Exception {
+        Map<?, ?> tiles = (Map<?, ?>) fget(fget(G(), "map"), "overworldTiles");
+        Class<?> v2 = Class.forName("com.badlogic.gdx.math.Vector2");
+        Field fx = v2.getField("x"), fy = v2.getField("y");
+        int minx = Integer.MAX_VALUE, maxx = Integer.MIN_VALUE, miny = Integer.MAX_VALUE, maxy = Integer.MIN_VALUE;
+        for (Object k : tiles.keySet()) {
+            int x = Math.round(fx.getFloat(k) / 16f), y = Math.round(fy.getFloat(k) / 16f);
+            minx = Math.min(minx, x); maxx = Math.max(maxx, x); miny = Math.min(miny, y); maxy = Math.max(maxy, y);
+        }
+        int w = maxx - minx + 1, h = maxy - miny + 1;
+        char[][] rows = new char[h][w];
+        char[][] lv = new char[h][w * 2];
+        for (char[] r : rows) java.util.Arrays.fill(r, ' ');
+        for (char[] r : lv) java.util.Arrays.fill(r, '0');
+        for (Map.Entry<?, ?> e : tiles.entrySet()) {
+            Object k = e.getKey(), t = e.getValue();
+            int cx = Math.round(fx.getFloat(k) / 16f) - minx, cy = maxy - Math.round(fy.getFloat(k) / 16f);
+            boolean solid = Boolean.TRUE.equals(fget(t, "isSolid"));
+            char c = '.';
+            if (Boolean.TRUE.equals(fget(t, "isWater"))) c = 'w';
+            else if (solid || Boolean.TRUE.equals(fget(t, "isLava"))) c = '#';
+            else if (fget(t, "ledgeDir") != null || Boolean.TRUE.equals(fget(t, "isLedge"))) c = 'l';
+            else if (Boolean.TRUE.equals(fget(t, "isTidal"))) c = 't';
+            else if (Boolean.TRUE.equals(fget(t, "isGrass"))) c = 'g';
+            String nm = str(fget(t, "name"));
+            if (!solid && (nm.contains("door") || nm.contains("entrance"))) c = 'e';
+            rows[cy][cx] = c;
+            Object rt = fget(t, "routeBelongsTo");
+            if (rt != null) {
+                int L = Math.min(99, ((Number) fget(rt, "level")).intValue());
+                lv[cy][cx * 2] = (char) ('0' + L / 10);
+                lv[cy][cx * 2 + 1] = (char) ('0' + L % 10);
+            }
+        }
+        StringBuilder sb = new StringBuilder("{\"x0\":").append(minx).append(",\"y1\":").append(maxy)
+                .append(",\"w\":").append(w).append(",\"h\":").append(h).append(",\"rows\":[");
+        for (int i = 0; i < h; i++) sb.append(i > 0 ? "," : "").append(q(new String(rows[i])));
+        sb.append("],\"lv\":[");
+        for (int i = 0; i < h; i++) sb.append(i > 0 ? "," : "").append(q(new String(lv[i])));
         return sb.append("]}").toString();
     }
 

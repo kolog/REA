@@ -36,7 +36,7 @@ def open_bag(g):
 def select_item(g, name):
     """With the bag open: put the cursor on `name` (switching tabs if needed) and press A."""
     for _ in range(6):
-        m = g.act("DrawItemMenuGen2", 1)
+        m = g.act("DrawItemMenuGen2", 2)
         if m is None:
             return False
         items = m["itemsList"]

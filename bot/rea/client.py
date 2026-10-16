@@ -77,3 +77,6 @@ class Game(Conn):
     def save(self):
         """Write the current world to its .sav file right now."""
         return self.call("save")
+
+    def world(self):
+        return self.call("world")
