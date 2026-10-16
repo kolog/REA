@@ -1,0 +1,6 @@
+agent/build/
+agent/rea-agent.jar
+tools/*.log
+tools/*.err
+__pycache__/
+*.pyc
