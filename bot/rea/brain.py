@@ -130,9 +130,11 @@ class Brain:
             farm.collect(self.g, self.world, self.mons, log=self.log, avoid=danger)
             self.stats["harvests"] = self.stats.get("harvests", 0) + 1
             return True
+        if self.camp is not None and farm.relocate_far(self.g, self.world, self.objs, self.camp, log=self.log, avoid=danger):
+            return True
         idx = farm.deployable(s)
         if idx is not None and self.failed.get(("deploy", s["player"]["party"][idx]["specie"]), 0) < 2:
-            ok = farm.deploy(self.g, self.world, self.objs, idx, log=self.log, avoid=danger)
+            ok = farm.deploy(self.g, self.world, self.objs, idx, log=self.log, avoid=danger, near=self.camp)
             if ok is True:
                 self.stats["deployed"] = self.stats.get("deployed", 0) + 1
                 self.trainer.checkpoint(True)

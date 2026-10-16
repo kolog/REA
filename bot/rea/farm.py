@@ -80,14 +80,15 @@ class HabitatMap:
         return True
 
 
-def find_drop_spot(world, objs, types, origin, limit=60, hab=None):
+def find_drop_spot(world, objs, types, origin, limit=60, hab=None, near=None, near_r=4):
     """Nearest walkable tile (by walking distance from origin) from which a pokemon dropped on the next tile is in
     its habitat. Returns (stand_tile, drop_tile) or None."""
     hab = hab or HabitatMap(world, objs)
     groups = groups_for(types)
     dist = world.dist_map(origin)
     blocked = {(o[0], o[1]) for o in objs}
-    cands = sorted((p for p, d in dist.items() if d <= limit and world.ch(p) == "." and p not in blocked),
+    cands = sorted((p for p, d in dist.items() if d <= limit and world.ch(p) == "." and p not in blocked
+                    and (near is None or (abs(p[0] - near[0]) <= near_r and abs(p[1] - near[1]) <= near_r))),
                    key=lambda p: dist[p])
     for p in cands:
         for dx, dy in nav.DIRS.values():
@@ -145,12 +146,14 @@ def collect(g, world, mons, log=print, avoid=()):
     return True
 
 
-def deploy(g, world, objs, idx, log=print, avoid=()):
+def deploy(g, world, objs, idx, log=print, avoid=(), near=None):
     """Drop party member `idx` in a spot that satisfies its habitat. Returns True if it left the party."""
     s = g.state()
     m = s["player"]["party"][idx]
     here = nav.tile_of(s["player"])
-    spot = find_drop_spot(world, objs, m["types"], here, limit=250)
+    spot = find_drop_spot(world, objs, m["types"], here, limit=250, near=near) if near else None
+    if spot is None:
+        spot = find_drop_spot(world, objs, m["types"], here, limit=250)
     if spot is None:
         log("no habitat spot for %s" % m["specie"])
         return False
@@ -180,7 +183,12 @@ def deploy(g, world, objs, idx, log=print, avoid=()):
             break
         else:
             g.wait(8)
-    return len(g.state()["player"]["party"]) < before
+    dropped = len(g.state()["player"]["party"]) < before
+    if dropped:                                   # a pokemon often already holds its item: take it right away
+        held = [x for x in g.allmons() if x[2] == "owned" and x[0] == m["specie"] and x[5]]
+        if held:
+            recruit.pick_up(g, (held[0][3], held[0][4]), log=log)
+    return dropped
 
 
 def recall(g, world, specie, log=print, avoid=()):
@@ -217,3 +225,29 @@ def recall(g, world, specie, log=print, avoid=()):
     if ok:
         log("recalled %s" % specie)
     return ok
+
+
+def relocate_far(g, world, objs, camp, log=print, avoid=(), max_dist=18):
+    """Bring a farm pokemon that wandered/was dropped far from the base back home. True if something was done."""
+    s = nav.ensure_free(g)
+    if len(s["player"]["party"]) >= 6:
+        return False
+    far = [m for m in g.allmons() if m[2] == "owned"
+           and abs(m[3] - camp[0]) + abs(m[4] - camp[1]) > max_dist and farmable_species(m)]
+    if not far:
+        return False
+    here = nav.tile_of(s["player"])
+    far.sort(key=lambda m: abs(m[3] - here[0]) + abs(m[4] - here[1]))
+    specie = far[0][0]
+    log("bringing %s back to the base" % specie)
+    if not recall(g, world, specie, log=log, avoid=avoid):
+        return True
+    s = g.state()
+    idx = next((i for i, x in enumerate(s["player"]["party"]) if x["specie"] == specie), None)
+    if idx is not None:
+        deploy(g, world, objs, idx, log=log, avoid=avoid, near=camp)
+    return True
+
+
+def farmable_species(m):
+    return farmable(m[6]) and produce_value(m[6]) > 0

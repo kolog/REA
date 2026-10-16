@@ -21,9 +21,14 @@ python bot/smoke_test.py            # conecta, lê estado e anda
 Protocolo (uma linha por comando): `ping`, `state`, `do <up+a|-> <frames>`, `grid <r>`, `get <caminho> [prof]`,
 `type <texto>`, `release`. `get class:com.pkmngen.game.X#campo` lê estáticos.
 
+## Módulos (bot/rea)
+`client` ponte TCP · `nav`/`world`/`travel` mapa e caminhos · `battle` luta/troca/captura (bola escolhida pelas regras do jogo) ·
+`rest` dormir no saco · `field` golpes de campo e menu de Pokémon · `economy` coleta, construção, fogueira, crafting ·
+`recruit` recrutar Pokémon e pegar itens · `farm` fazenda (soltar em habitat, colher, trazer de volta) · `base` abrigo
+(3 telhados + 2 cercas = produção em dobro) · `trainer` treino em zona de grama · `brain` orquestrador de prioridades.
+Mecânicas descobertas na engenharia reversa: `docs/MECHANICS.md`.
+
 ## Roadmap
-- [x] M0 — ponte agente↔Python, estado, input, menu inicial, novo jogo
-- [x] M1 — navegação: grid de tiles, A* em trechos curtos, caminhada contínua no agente, exploração
-- [ ] M2 — batalha (tabela de tipos, escolha de golpe, captura, fuga)
-- [ ] M3 — sobrevivência/crafting (itens, receitas, fogueira, construção, dormir)
-- [ ] M4 — progressão (time, evolução, ginásios/lendários, objetivo final)
+- [x] M0 ponte · M1 navegação · M2 batalha/descanso/save-load
+- [x] M3 recrutar, coletar, construir, fabricar, capturar, fazenda e base
+- [ ] M4 baú de armazenamento, casa completa, evolução e golpes, SURF/água, biomas e chefes, objetivo final
