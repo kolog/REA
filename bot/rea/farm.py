@@ -232,7 +232,8 @@ def relocate_far(g, world, objs, camp, log=print, avoid=(), max_dist=18):
     if len(s["player"]["party"]) >= 6:
         return False
     far = [m for m in g.allmons() if m[2] == "owned"
-           and abs(m[3] - camp[0]) + abs(m[4] - camp[1]) > max_dist and farmable_species(m)]
+           and abs(m[3] - camp[0]) + abs(m[4] - camp[1]) > max_dist and farmable_species(m)
+           and not groups_for(m[6])]      # habitat-bound species (water, rock, fire ...) stay where their habitat is
     if not far:
         return False
     here = nav.tile_of(s["player"])
