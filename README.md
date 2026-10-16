@@ -11,6 +11,11 @@ PokeWilds (JVM) ── rea-agent.jar (-javaagent) ── TCP 127.0.0.1:7777 ─�
 * **bot/rea/** — cliente Python (`Game.hold`, `tap`, `state`, `grid`, `get`).
 * **tools/launch_game.ps1** — abre o jogo com o agente.
 
+## Jogar (resumo)
+`powershell -File tools/play.ps1 -Mission auto -Seconds 100` (abre o jogo com o agente, carrega `default.sav` e joga).
+Missões: `auto`, `train`, `balls`, `flyer`. Rode em primeiro plano, em rodadas de ~100 s. Skill: `docs/skill/SKILL.md`
+(instalada em `~/.claude/skills/pokewilds-bot`).
+
 ## Uso
 ```
 bash agent/build.sh                 # precisa de JDK 17
