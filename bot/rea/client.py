@@ -19,6 +19,19 @@ class Conn:
                 time.sleep(0.5)
         self.sock.settimeout(30)
         self.f = self.sock.makefile("rw", encoding="utf-8", newline="\n")
+        self._sync()
+
+    def _sync(self):
+        """A previous client may have died with a command in flight; its late reply would answer our first call.
+        Send a ping and drop everything up to its reply."""
+        self.f.write("ping\n")
+        self.f.flush()
+        for _ in range(40):
+            line = self.f.readline()
+            if not line:
+                raise ConnectionError("agent closed the connection")
+            if '"ok":true' in line and '"frame"' in line and len(line) < 80:
+                return
 
     def call(self, line):
         self.f.write(line + "\n")
