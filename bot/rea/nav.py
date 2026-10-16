@@ -88,9 +88,26 @@ def is_free(s):
         a in s["actions"] for a in ("DisplayText", "DrawBattle", "DrawAttacksMenu", "DrawPlayerMenu"))
 
 
-def ensure_free(g, tries=25):
+def ensure_outside(g, tries=4):
+    """Leave a house interior (build/cut/farm work on the outside map only works from outside)."""
+    s = g.state()
+    for _ in range(tries):
+        if not s.get("map", {}).get("interior"):
+            return s
+        if is_free(s):
+            g.walk(["down"])
+            settle(g)
+        else:
+            g.tap("a", 2, 14)
+        s = g.state()
+    return s
+
+
+def ensure_free(g, tries=25, allow_interior=False):
     """Close leftover text boxes / menus until the overworld accepts input again. Returns the state."""
     s = g.state()
+    if not allow_interior and s.get("map", {}).get("interior") and is_free(s):
+        s = ensure_outside(g)
     for _ in range(tries):
         if is_free(s) or "DrawBattle" in s["actions"]:
             return s
