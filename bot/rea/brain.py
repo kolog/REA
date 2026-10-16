@@ -9,7 +9,7 @@
 """
 import time
 
-from . import battle, economy, farm, field, nav, recruit, rest, travel
+from . import base, battle, economy, farm, field, nav, recruit, rest, travel
 from .trainer import Trainer
 from .world import World
 
@@ -68,7 +68,12 @@ class Brain:
     # ---------------------------------------------------------------- goals
     def goal_rest(self, s):
         if rest.party_hp_frac(s) < 0.6 and "sleeping bag" in s["player"]["items"]:
-            ok = rest.rest(self.g, log=self.log)
+            door = rest.home_door(self.objs) if self.objs else None
+            ok = False
+            if door is not None:
+                ok = rest.rest_home(self.g, door, log=self.log)
+            if not ok:
+                ok = rest.rest(self.g, log=self.log)
             if ok:
                 self.stats["rests"] += 1
                 self.trainer.checkpoint(True)
@@ -143,6 +148,23 @@ class Brain:
                 self.failed[k] = self.failed.get(k, 0) + 1
             return True
         return False
+
+    def goal_house(self, s):
+        """Build the 5x3 house next to the camp (once): it is the pen for captured pokemon and the best bed."""
+        if self.camp is None or rest.home_door(self.objs) is not None or self.failed.get("house", 0) >= 2:
+            return False
+        if "CUT" not in self.known_moves(s) or "BUILD" not in self.known_moves(s):
+            return False
+        site = base.find_site(self.world, self.objs, self.mons, self.camp)
+        if site is None:
+            self.failed["house"] = 9
+            return False
+        self.log("building the house at %s" % (site,))
+        placed, total = base.build_house(self.g, self.world, self.objs, site, log=self.log, avoid=self.danger_tiles(s))
+        self.refresh(True)
+        if placed == 0:
+            self.failed["house"] = self.failed.get("house", 0) + 1
+        return True
 
     def goal_pickup(self, s):
         here = nav.tile_of(s["player"])
@@ -223,7 +245,7 @@ class Brain:
         if self.goal_rest(s):
             return g.state()
         self.refresh()
-        for goal in (self.goal_farm, self.goal_recruit, self.goal_pickup, self.goal_supplies):
+        for goal in (self.goal_farm, self.goal_recruit, self.goal_pickup, self.goal_supplies, self.goal_house):
             s = nav.ensure_free(g)
             if battle.in_battle(s):
                 return self.trainer.fight(s)

@@ -93,3 +93,66 @@ def rest(g, until=0.95, log=print, max_seconds=240, attempts=12):
         g.tap("b", 2, 30)
         g.tap("a", 2, 30)
     return party_hp_frac(g.state()) >= until
+
+
+def home_door(objs):
+    """Tile of the house door nearest to the camp, or None."""
+    doors = [(o[0], o[1]) for o in objs if "door" in o[2] and o[2].startswith("house")]
+    camp = next(((o[0], o[1]) for o in objs if "campfire" in o[2]), None)
+    if not doors:
+        return None
+    if camp is None:
+        return doors[0]
+    return min(doors, key=lambda d: abs(d[0] - camp[0]) + abs(d[1] - camp[1]))
+
+
+def rest_home(g, door, until=0.95, log=print, max_seconds=240, attempts=12):
+    """Sleep inside the house (twice the healing, and the interior becomes the safe place). True if healed."""
+    import time
+    from . import battle, travel
+    from .world import World
+    s = nav.ensure_free(g)
+    if "sleeping bag" not in s["player"]["items"]:
+        return False
+    world = World(g.world())
+    front = (door[0], door[1] - 1)
+    inside = False
+    for _ in range(attempts):
+        s = nav.ensure_free(g, allow_interior=True)
+        if battle.in_battle(s):
+            battle.run_battle(g, log=log)
+            continue
+        if s["map"]["interior"]:
+            inside = True
+            break
+        r = travel.go_near(g, world, front, dist=0, avoid_grass=True, max_legs=80)
+        if r != "arrived":
+            continue
+        g.walk(["up"])                      # through the door
+        for _ in range(12):
+            g.wait(15)
+            if g.state()["map"]["interior"]:
+                break
+    if not inside and not g.state()["map"]["interior"]:
+        return False
+    field.clear(g)
+    if not items.use_item(g, "sleeping bag"):
+        items.close_menus(g)
+        return False
+    for _ in range(40):
+        s = g.wait(15)
+        if s["player"]["isSleeping"]:
+            break
+    t0 = time.time()
+    while time.time() - t0 < max_seconds:
+        s = g.wait(120)
+        if not s["player"]["isSleeping"] or party_hp_frac(s) >= until:
+            break
+    log("rested at home: hp frac %.2f" % party_hp_frac(s))
+    for _ in range(6):
+        if not g.state()["player"]["isSleeping"]:
+            break
+        g.tap("b", 2, 30)
+        g.tap("a", 2, 30)
+    nav.ensure_outside(g)
+    return party_hp_frac(g.state()) >= until
