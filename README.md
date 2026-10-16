@@ -31,4 +31,5 @@ Mecânicas descobertas na engenharia reversa: `docs/MECHANICS.md`.
 ## Roadmap
 - [x] M0 ponte · M1 navegação · M2 batalha/descanso/save-load
 - [x] M3 recrutar, coletar, construir, fabricar, capturar, fazenda e base
-- [ ] M4 baú de armazenamento, casa completa, evolução e golpes, SURF/água, biomas e chefes, objetivo final
+- [x] M4 casa 5x3 (sono em casa), cercadinhos com portão, fazenda (fogo/água/elétrico), bolas, treino do líder, fantasmas
+- [ ] M5 mobiliar a casa (baú/cama), Xatu->FLY e viagem aérea, SURF, Meganium (árvores grandes), mansão/chave, fósseis e pedras
