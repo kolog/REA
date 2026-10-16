@@ -44,6 +44,8 @@ class Brain:
             self.trainer.world = self.world
             self.objs = self.g.objects()
             self.mons = self.g.allmons()
+            owned = {m[0] for m in self.mons if m[2] == "owned"}
+            battle.OWNED.update(owned)
             camps = [o for o in self.objs if "campfire" in o[2]]
             self.camp = (camps[0][0], camps[0][1]) if camps else None
             self.refreshed = time.time()
@@ -279,6 +281,7 @@ class Brain:
         if self.goal_rest(s):
             return g.state()
         self.refresh()
+        battle.OWNED.update(m["specie"] for m in s["player"]["party"])
         if self.camp is not None and self.ghost_exposed(s):
             self.log("night in %s without light: going back to the camp" % s["map"]["biome"])
             travel.go_near(g, self.world, self.camp, dist=2, avoid_grass=True, max_legs=40, avoid=self.danger_tiles(s))

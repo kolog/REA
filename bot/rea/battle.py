@@ -6,6 +6,7 @@ from . import items as _items
 BALLS = ["master ball", "ultra ball", "great ball", "poké ball", "heavy ball", "fast ball", "love ball",
          "level ball", "moon ball", "lure ball", "friend ball", "net ball", "dive ball", "quick ball",
          "heal ball", "nest ball", "dusk ball", "dream ball", "timer ball"]
+OWNED = set()          # species we already have (party + farm + caught); kept up to date by the Brain
 MENU = "DrawBattleMenuNormal"
 ATTACKS = "DrawAttacksMenu"
 ATK_CURR = "class:com.pkmngen.game.DrawAttacksMenu#curr"
@@ -190,7 +191,7 @@ def want_catch(s):
     opp = s["battle"].get("opp")
     if not opp or len(party) >= 6 or best_ball(s)[0] is None:
         return False
-    if opp["specie"] in {m["specie"] for m in party}:
+    if opp["specie"] in {m["specie"] for m in party} or opp["specie"] in OWNED:
         return False
     return opp["lvl"] <= max(m["lvl"] for m in party) + 10
 

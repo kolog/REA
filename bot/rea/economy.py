@@ -206,6 +206,11 @@ def build(g, tile_name, log=print):
 def open_crafts(g, camp):
     """Walk next to the campfire at tile `camp`, face it and open the crafting menu."""
     field.clear(g)
+    from .world import World
+    here = nav.tile_of(nav.ensure_free(g)["player"])
+    if abs(here[0] - camp[0]) + abs(here[1] - camp[1]) > 6:           # approach() only sees 12 tiles around us
+        if reach(g, World(g.world()), camp, dist=3) != "arrived":
+            return False
     d = recruit.approach(g, camp)
     if d is None:
         return False
