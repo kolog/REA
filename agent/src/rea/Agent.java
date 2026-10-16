@@ -31,6 +31,8 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  *   act <ClassName> [depth]     -> dump the first stack action with that simple name
  *   save                        -> write the world save now
  *   world                       -> whole tile map, one char per tile (see world())
+ *   allmons                     -> every overworld pokemon in the world
+ *   objects                     -> tiles with an object/item on top
  *   grid <radius>               -> tiles around the player
  *   get <path> [depth]          -> reflective inspect, path like "player.pokemon.0"
  *   type <text>                 -> feed characters to the active text field
@@ -230,6 +232,8 @@ public final class Agent {
                 break;
             }
             case "world": send(world()); break;
+            case "objects": send(objects()); break;
+            case "allmons": send(allMons()); break;
             case "grid": send(grid(p.length > 1 ? Integer.parseInt(p[1]) : 8)); break;
             case "get": send(inspect(p[1], p.length > 2 ? Integer.parseInt(p[2]) : 2)); break;
             default: send("{\"error\":\"unknown command\"}");
@@ -292,6 +296,10 @@ public final class Agent {
         sb.append(",\"isSleeping\":").append(fget(pl, "isSleeping"));
         sb.append(",\"isFishing\":").append(fget(pl, "isFishing"));
         sb.append(",\"adrenaline\":").append(fget(pl, "adrenaline"));
+        sb.append(",\"field\":").append(q(str(fget(pl, "currFieldMove"))));
+        List<?> pty = (List<?>) fget(pl, "pokemon");
+        sb.append(",\"hm\":").append(pty == null ? -1 : pty.indexOf(fget(pl, "hmPokemon")));
+        sb.append(",\"building\":").append(q(str(fget(fget(pl, "currBuildTile"), "name"))));
         sb.append(",\"items\":").append(mapJson(fget(pl, "itemsDict")));
         sb.append(",\"party\":[");
         List<?> party = (List<?>) fget(pl, "pokemon");
@@ -320,8 +328,30 @@ public final class Agent {
             Object[] a = (Object[]) atk;
             for (int i = 0; i < a.length; i++) sb.append(i > 0 ? "," : "").append(q(str(a[i])));
         }
-        return sb.append("],\"pp\":").append(arrJson(fget(pk, "currentPP"))).append(",\"x\":")
-                .append(posOf(pk)).append("}").toString();
+        sb.append("],\"hms\":").append(listJson(fget(pk, "hms")));
+        sb.append(",\"owned\":").append(fget(pk, "previousOwner") == fget(G(), "player"));
+        sb.append(",\"egg\":").append(fget(pk, "isEgg")).append(",\"holds\":").append(q(str(fget(pk, "hasItem"))));
+        sb.append(",\"temper\":").append(q(temper(pk)));
+        return sb.append(",\"x\":").append(posOf(pk)).append("}").toString();
+    }
+
+    /** What happens when the player presses A on this pokemon (see Tile.onPressA). */
+    static String temper(Object pk) {
+        try {
+            Object sp = fget(pk, "specie");
+            String name = str(fget(sp, "name"));
+            Class<?> pc = pk.getClass();
+            List<?> anyway = (List<?>) sget(pc, "aggroAnyway"), dont = (List<?>) sget(pc, "dontAggro"),
+                    skittish = (List<?>) sget(pc, "skittishMons");
+            Map<?, ?> base = (Map<?, ?>) sget(pc, "baseSpecies");
+            boolean isBase = true;
+            if (base != null && base.get(name) != null) isBase = base.get(name).equals(name);
+            if (Boolean.TRUE.equals(fget(pk, "isEgg"))) return "egg";
+            if (fget(pk, "previousOwner") == fget(G(), "player")) return "owned";
+            if (skittish != null && skittish.contains(name)) return "skittish";
+            boolean aggro = (anyway != null && anyway.contains(name)) || (!isBase && !(dont != null && dont.contains(name)));
+            return aggro ? "aggro" : "friendly";
+        } catch (Throwable t) { return "?"; }
     }
 
     static String posOf(Object pk) {
@@ -430,6 +460,46 @@ public final class Agent {
         for (int i = 0; i < h; i++) sb.append(i > 0 ? "," : "").append(q(new String(rows[i])));
         sb.append("],\"lv\":[");
         for (int i = 0; i < h; i++) sb.append(i > 0 ? "," : "").append(q(new String(lv[i])));
+        return sb.append("]}").toString();
+    }
+
+    /** All overworld pokemon in the world (not just on screen): [specie, level, temper, tileX, tileY, holds]. */
+    static String allMons() throws Exception {
+        Map<?, ?> mons = (Map<?, ?>) fget(fget(G(), "map"), "pokemon");
+        Object over = fget(fget(G(), "map"), "overworldTiles");
+        Class<?> v2 = Class.forName("com.badlogic.gdx.math.Vector2");
+        Field fx = v2.getField("x"), fy = v2.getField("y");
+        StringBuilder sb = new StringBuilder("{\"mons\":[");
+        boolean first = true;
+        for (Map.Entry<?, ?> e : new ArrayList<>(mons.entrySet())) {
+            Object pk = e.getValue();
+            if (pk == null || fget(pk, "mapTiles") != over) continue;
+            Object sp = fget(pk, "specie");
+            sb.append(first ? "" : ",").append('[').append(q(str(sp == null ? null : fget(sp, "name")))).append(',')
+              .append(fget(pk, "level")).append(',').append(q(temper(pk))).append(',')
+              .append(Math.round(fx.getFloat(e.getKey()) / 16f)).append(',')
+              .append(Math.round(fy.getFloat(e.getKey()) / 16f)).append(',').append(q(str(fget(pk, "hasItem")))).append(']');
+            first = false;
+        }
+        return sb.append("]}").toString();
+    }
+
+    /** Every overworld tile that has an object on it or an item lying on it: [x, y, nameUpper, hasItem, amount]. */
+    static String objects() throws Exception {
+        Map<?, ?> tiles = (Map<?, ?>) fget(fget(G(), "map"), "overworldTiles");
+        Class<?> v2 = Class.forName("com.badlogic.gdx.math.Vector2");
+        Field fx = v2.getField("x"), fy = v2.getField("y");
+        StringBuilder sb = new StringBuilder("{\"objs\":[");
+        boolean first = true;
+        for (Map.Entry<?, ?> e : tiles.entrySet()) {
+            Object t = e.getValue();
+            String up = str(fget(t, "nameUpper")), item = str(fget(t, "hasItem"));
+            if (up.isEmpty() && item.isEmpty()) continue;
+            sb.append(first ? "" : ",").append('[').append(Math.round(fx.getFloat(e.getKey()) / 16f)).append(',')
+              .append(Math.round(fy.getFloat(e.getKey()) / 16f)).append(',').append(q(up)).append(',').append(q(item))
+              .append(',').append(fget(t, "hasItemAmount")).append(']');
+            first = false;
+        }
         return sb.append("]}").toString();
     }
 

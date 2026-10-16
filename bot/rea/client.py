@@ -80,3 +80,10 @@ class Game(Conn):
 
     def world(self):
         return self.call("world")
+
+    def objects(self):
+        return self.call("objects")["objs"]
+
+    def allmons(self):
+        """[(specie, level, temper, tx, ty, holds)] for every overworld pokemon in the world."""
+        return [tuple(m) for m in self.call("allmons")["mons"]]
