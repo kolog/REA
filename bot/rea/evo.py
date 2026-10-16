@@ -26,6 +26,10 @@ def trainee(g, s):
     """Party index worth feeding exp to via the lead-swap trick, or None."""
     party = s["player"]["party"]
     top = max(m["lvl"] for m in party)
+    # absolute priority: whoever leads to FLY (natu -> xatu ...) until it has evolved
+    for i, m in enumerate(party):
+        if m["specie"] in FLY_LINE and next_level_evo(g, m["specie"]) and not m.get("egg") and m["stats"]["hp"] > 0:
+            return i
     best, bscore = None, 0.0
     for i, m in enumerate(party):
         if m.get("egg") or m["stats"]["hp"] <= 0 or m["lvl"] >= top:

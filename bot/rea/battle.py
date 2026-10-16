@@ -218,6 +218,16 @@ def decide(s, switched_recently=False, allow_ball=True):
         # a good ball for this level can be thrown at full hp; otherwise weaken it first
         if p >= 0.75 or (p >= 0.12 and (ohp <= 0.5 or opp["status"] not in ("", None))):
             return "ball", ball
+        if not losing and hpf > 0.4 and p >= 0.12:
+            # weaken without killing: strongest move whose expected damage stays well under the target's hp,
+            # else the weakest damaging one; never swap in a stronger mon that would overkill
+            ohp_abs = opp["stats"]["hp"]
+            dmgs = [(expected_damage(me, m, opp), i) for i, m in enumerate(me["moves"]) if m]
+            dmgs = [(d, i) for d, i in dmgs if d > 0]
+            if dmgs:
+                safe = [(d, i) for d, i in dmgs if d * 1.4 < ohp_abs * 0.85]
+                pick = max(safe) if safe else min(dmgs)
+                return "fight", pick[1]
     # a clearly better mon is waiting: swap, unless we just did (avoid ping-pong) or we are about to win anyway
     if best_i != cur_i and not switched_recently and best_v > max(1.6 * cur_v, 0.8) and turns_to_kill > 1.5:
         return "switch", best_i

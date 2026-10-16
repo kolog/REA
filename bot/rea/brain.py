@@ -24,7 +24,8 @@ GHOST_BIOMES = {"deep_forest", "graveyard", "wooded_lake"}
 
 
 class Brain:
-    def __init__(self, g, log=print):
+    def __init__(self, g, log=print, mission="auto"):
+        self.mission = mission          # "auto" = all goals; "train" = only survive + train the trainee/zone
         self.g = g
         self.log = log
         self.trainer = Trainer(g, log)
@@ -286,7 +287,10 @@ class Brain:
             self.log("night in %s without light: going back to the camp" % s["map"]["biome"])
             travel.go_near(g, self.world, self.camp, dist=2, avoid_grass=True, max_legs=40, avoid=self.danger_tiles(s))
             return g.state()
-        for goal in (self.goal_farm, self.goal_recruit, self.goal_pickup, self.goal_supplies, self.goal_house):
+        goals = (self.goal_farm, self.goal_recruit, self.goal_pickup, self.goal_supplies, self.goal_house)
+        if self.mission == "train":
+            goals = (self.goal_farm,) if farm.ready_items(self.mons) and False else ()
+        for goal in goals:
             s = nav.ensure_free(g)
             if battle.in_battle(s):
                 return self.trainer.fight(s)
@@ -294,5 +298,6 @@ class Brain:
                 return g.state()                         # hurt in the middle of a goal: rest first
             if goal(s):
                 return g.state()
-        field.clear(g)
+        if g.state()["player"]["field"] != "":      # keep a FOLLOW trainee, drop only active field moves
+            field.clear(g)
         return self.trainer.tick()

@@ -7,7 +7,8 @@ from rea import Game, boot, brain, nav
 
 g = Game()
 boot.resume_or_new(g)
-b = brain.Brain(g, log=lambda m: print("  " + m, flush=True))
+mission = sys.argv[2] if len(sys.argv) > 2 else "auto"
+b = brain.Brain(g, log=lambda m: print("  " + m, flush=True), mission=mission)
 t0 = time.time()
 limit = float(sys.argv[1]) if len(sys.argv) > 1 else 90
 last = 0

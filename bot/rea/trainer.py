@@ -105,7 +105,11 @@ class Trainer:
         lvl = self.strongest(s)
         now = time.time()
         dist = self.world.dist_map(here)
-        want_lo, want_hi = max(2, lvl - 4), lvl + 4
+        # a FLY-line trainee (natu -> xatu) needs exp fast: fight tougher routes, the strong mon covers it
+        hungry = evo.trainee(self.g, s)
+        hungry = hungry is not None and s["player"]["party"][hungry]["specie"] in evo.FLY_LINE
+        want_lo, want_hi = max(2, lvl - 4), lvl + (8 if hungry else 4)
+        target = lvl + (6 if hungry else 1)
         best, best_score = None, 1e18
         seen_cells = set()
         for p in dist:
@@ -121,7 +125,7 @@ class Trainer:
             if self.bad_zones.get(cell, 0) > now:
                 continue
             # prefer ground whose level is close to ours, then close by
-            score = abs(L - (lvl + 1)) * 12 + dist[p]
+            score = abs(L - target) * 12 + dist[p]
             if score < best_score:
                 best, best_score = (p, L), score
         return best
@@ -199,6 +203,7 @@ class Trainer:
                             abs(p[0] - center[0]) <= 6 and abs(p[1] - center[1]) <= 6, s,
                             max_level=zl + 2)
             if st == "nopath":
+                self.log("no path from %s to zone %s (interior=%s)" % (here, self.zone, s["map"]["interior"]))
                 self.blacklist_zone(30)
             return s
         # inside the zone: pace across grass tiles (each step may trigger an encounter)
