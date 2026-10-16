@@ -369,6 +369,12 @@ public final class Agent {
         sb.append(",\"owned\":").append(fget(pk, "previousOwner") == fget(G(), "player"));
         sb.append(",\"egg\":").append(fget(pk, "isEgg")).append(",\"holds\":").append(q(str(fget(pk, "hasItem"))));
         sb.append(",\"temper\":").append(q(temper(pk)));
+        sb.append(",\"base\":").append(mapJson(fget(pk, "baseStats"))).append(",\"gender\":").append(q(str(fget(pk, "gender"))));
+        try {
+            Map<?, ?> wts = (Map<?, ?>) sget(pk.getClass(), "weights");
+            Object w = wts == null ? null : wts.get(fget(pk, "dexNumber"));
+            sb.append(",\"wt\":").append(w == null ? "0" : w.toString());
+        } catch (Throwable t) { sb.append(",\"wt\":0"); }
         return sb.append(",\"x\":").append(posOf(pk)).append("}").toString();
     }
 

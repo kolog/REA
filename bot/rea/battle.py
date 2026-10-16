@@ -92,9 +92,66 @@ def value(me, opp):
     return off / max(risk, 0.04)
 
 
+BALL_COST = {"master ball": 9, "ultra ball": 4, "great ball": 3, "poké ball": 2}   # everything else: 1 apricorn
+MOON_MONS = ("clefairy", "jigglypuff", "nidorina", "nidorino")
+
+
+def ball_multiplier(ball, me, opp, turn, night=False):
+    """Catch-rate multiplier of `ball` in this situation (rules read from Battle.java)."""
+    rate = max(1, opp["stats"].get("catchRate", 100))
+    b = ball
+    if b == "master ball":
+        return 99.0
+    if b in ("great ball", "park ball"):
+        return 1.5
+    if b == "ultra ball":
+        return 2.0
+    if b == "dusk ball":
+        return 3.5 if night else 1.0
+    if b == "fast ball":
+        return 4.0 if opp.get("base", {}).get("speed", 0) >= 100 else 1.0
+    if b == "quick ball":
+        return 5.0 if turn == 1 else 1.0
+    if b == "net ball":
+        return min(1.0 + turn * 0.3, 4.0) if set(opp["types"]) & {"WATER", "BUG"} else 1.0
+    if b == "dive ball":
+        return 1.0
+    if b == "nest ball":
+        return (41.0 - opp["lvl"]) / 10.0 if opp["lvl"] <= 29 else 1.0
+    if b == "dream ball":
+        return 4.0 if opp.get("status") == "sleep" else 1.0
+    if b == "heavy ball":
+        w = opp.get("wt", 0)
+        delta = 30 if w >= 300 else 20 if w >= 200 else 0 if w >= 100 else -20
+        return max(0.1, (rate + delta) / rate)
+    if b == "level ball":
+        l = me["lvl"]
+        return 8.0 if l / 4 > opp["lvl"] else 4.0 if l / 2 > opp["lvl"] else 2.0 if l > opp["lvl"] else 1.0
+    if b == "love ball":
+        same = me["specie"] == opp["specie"]
+        opposite = {me.get("gender"), opp.get("gender")} == {"male", "female"}
+        return 8.0 if same and opposite else 1.0
+    if b == "moon ball":
+        return 4.0 if opp["specie"] in MOON_MONS else 1.0
+    return 1.0
+
+
 def best_ball(s):
+    """The ball with the best catch chance per unit of cost that we actually have."""
     have = s["player"]["items"]
-    return next((b for b in BALLS if have.get(b, 0) > 0), None)
+    opp = s["battle"].get("opp")
+    party = s["player"]["party"]
+    me = party[s["player"]["curr"]] if 0 <= s["player"]["curr"] < len(party) else party[0]
+    turn = s["battle"].get("turn", 1)
+    best, bs = None, -1.0
+    for b in BALLS:
+        if have.get(b, 0) <= 0:
+            continue
+        m = ball_multiplier(b, me, opp, turn) if opp else 1.0
+        sc = m / BALL_COST.get(b, 1) ** 0.5       # cheap balls win ties, but a big multiplier still dominates
+        if sc > bs:
+            best, bs = b, sc
+    return best
 
 
 def want_catch(s):
@@ -125,7 +182,7 @@ def decide(s, switched_recently=False, allow_ball=True):
     turns_to_kill = 1.0 / off if off > 0 else 99
     losing = turns_to_die < 2 and turns_to_kill > 1.2
     ohp = opp["stats"]["hp"] / max(1, opp["max"]["hp"])
-    if allow_ball and want_catch(s) and (ohp <= 0.5 or opp["status"] not in ("", None) or turns_to_kill <= 1.3) and hpf > 0.25:
+    if allow_ball and want_catch(s) and (ohp <= 0.5 or opp["status"] not in ("", None)) and hpf > 0.25:
         return "ball", best_ball(s)
     # a clearly better mon is waiting: swap, unless we just did (avoid ping-pong) or we are about to win anyway
     if best_i != cur_i and not switched_recently and best_v > max(1.6 * cur_v, 0.8) and turns_to_kill > 1.5:

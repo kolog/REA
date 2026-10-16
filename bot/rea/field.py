@@ -144,3 +144,31 @@ def drop_eggs(g, log=print):
             dropped += 1
             log("dropped an egg")
     return dropped
+
+
+def drop_member(g, idx, log=print):
+    """DROP party member `idx` onto a free adjacent tile. Returns True when the party shrank."""
+    from . import economy, nav, recruit
+    s = nav.ensure_free(g)
+    n = len(s["player"]["party"])
+    if n <= 1:
+        return False
+    clear(g)
+    d = economy.free_neighbor(g)
+    if d is None:
+        log("no free tile to drop a pokemon")
+        return False
+    recruit.face(g, d)
+    if not party_action(g, idx, "DROP", log):
+        return False
+    for _ in range(30):
+        s = g.state()
+        if "DrawYesNoMenu" in s["actions"]:
+            recruit.yes_no(g, True)
+        elif "DisplayText" in s["actions"]:
+            g.tap("a", 2, 14)
+        elif "PlayerStanding" in s["actions"] and not any("Menu" in a for a in s["actions"]):
+            break
+        else:
+            g.wait(8)
+    return len(g.state()["player"]["party"]) < n

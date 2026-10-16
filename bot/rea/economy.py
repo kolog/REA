@@ -255,3 +255,87 @@ def close_crafts(g):
             g.tap("b", 2, 14)
         else:
             return
+
+
+def build_at(g, tile_name, target, log=print):
+    """Place `tile_name` on the (free) tile `target`: stand next to it, face it, press A. True if it appeared."""
+    s = nav.ensure_free(g)
+    idx = party_with(s, "BUILD")
+    if idx is None:
+        return False
+    if not field.select(g, idx, "BUILD", log):
+        return False
+    for _ in range(40):
+        if g.state()["player"]["building"] == tile_name:
+            break
+        g.tap("r", 2, 8)
+    else:
+        log("could not select build tile %s" % tile_name)
+        return False
+    d = recruit.approach(g, target)
+    if d is None:
+        return False
+    recruit.face(g, d)
+    before = dict(g.state()["player"]["items"])
+    g.tap("a", 2, 40)
+    for _ in range(8):
+        s = g.state()
+        if "DisplayText" in s["actions"]:
+            g.tap("a", 2, 14)
+        else:
+            g.wait(15)
+    after = g.state()["player"]["items"]
+    spent = {k: before[k] - after.get(k, 0) for k in before if before[k] != after.get(k, 0)}
+    if spent:
+        log("built %s at %s (spent %s)" % (tile_name, target, spent))
+    return bool(spent)
+
+
+def cut_tile(g, world, tile, move, log=print, avoid=()):
+    """Remove the vegetation/rock on `tile` with `move` (CUT/SMASH); returns True if the object is gone."""
+    s = nav.ensure_free(g)
+    idx = party_with(s, move)
+    if idx is None:
+        return False
+    if s["player"]["field"] != move or s["player"]["hm"] != idx:
+        if not field.select(g, idx, move, log):
+            return False
+    if travel.go_near(g, world, tile, dist=1, avoid_grass=True, max_legs=40, avoid=avoid) != "arrived":
+        return False
+    d = recruit.approach(g, tile)
+    if d is None:
+        return False
+    recruit.face(g, d)
+    g.tap("a", 2, 40)
+    for _ in range(8):
+        s = g.state()
+        if "DisplayText" in s["actions"]:
+            g.tap("a", 2, 14)
+        elif "CutTreeAnim" in s["actions"] or "DrawItemPickup" in s["actions"]:
+            g.wait(20)
+        else:
+            break
+    return not any((o[0], o[1]) == tile and o[2] in YIELD for o in g.objects())
+
+
+def clear_area(g, world, center, r=3, log=print, avoid=()):
+    """'Clear the area' before building: cut every plant/rock around `center` (the loot is a bonus)."""
+    cleared = 0
+    for _ in range(40):
+        s = nav.ensure_free(g)
+        if "DrawBattle" in s["actions"]:
+            return cleared
+        objs = g.objects()
+        todo = [(o[0], o[1], o[2]) for o in objs
+                if o[2] in YIELD and abs(o[0] - center[0]) <= r and abs(o[1] - center[1]) <= r]
+        todo = [t for t in todo if party_with(s, YIELD[t[2]][0]) is not None]
+        if not todo:
+            break
+        todo.sort(key=lambda t: abs(t[0] - center[0]) + abs(t[1] - center[1]))
+        x, y, kind = todo[0]
+        if cut_tile(g, world, (x, y), YIELD[kind][0], log, avoid):
+            cleared += 1
+        else:
+            break
+    field.clear(g)
+    return cleared

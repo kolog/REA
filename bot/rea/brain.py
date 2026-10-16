@@ -9,7 +9,7 @@
 """
 import time
 
-from . import battle, economy, field, nav, recruit, rest, travel
+from . import battle, economy, farm, field, nav, recruit, rest, travel
 from .trainer import Trainer
 from .world import World
 
@@ -80,7 +80,8 @@ class Brain:
         if temper != "friendly":          # eggs anger their parents and take ages to hatch
             return 0
         new = sum(MOVE_VALUE.get(h, 0) for h in hms if h not in have)
-        score = new * 10 + lvl * 0.5
+        fv = farm.produce_value(types) if farm.farmable(types) else 0
+        score = new * 10 + lvl * 0.5 + fv * 3
         return score / (1.0 + dist / 40.0)
 
     def goal_recruit(self, s):
@@ -121,6 +122,26 @@ class Brain:
             self.refresh(True)
         return True
 
+    def goal_farm(self, s):
+        """Harvest what dropped pokemon produce; drop surplus pokemon where they can produce."""
+        self.mons = self.g.allmons()
+        danger = self.danger_tiles(s)
+        if farm.ready_items(self.mons):
+            farm.collect(self.g, self.world, self.mons, log=self.log, avoid=danger)
+            self.stats["harvests"] = self.stats.get("harvests", 0) + 1
+            return True
+        idx = farm.deployable(s)
+        if idx is not None and self.failed.get(("deploy", s["player"]["party"][idx]["specie"]), 0) < 2:
+            ok = farm.deploy(self.g, self.world, self.objs, idx, log=self.log, avoid=danger)
+            if ok is True:
+                self.stats["deployed"] = self.stats.get("deployed", 0) + 1
+                self.trainer.checkpoint(True)
+            elif ok is False:
+                k = ("deploy", s["player"]["party"][idx]["specie"])
+                self.failed[k] = self.failed.get(k, 0) + 1
+            return True
+        return False
+
     def goal_pickup(self, s):
         here = nav.tile_of(s["player"])
         dist = self.world.dist_map(here)
@@ -150,10 +171,18 @@ class Brain:
     def goal_supplies(self, s):
         items = s["player"]["items"]
         apr = self.apricorns(s)
-        if self.balls(s) >= 3 and apr == 0:
+        has_farm_pair = items.get("magnet", 0) and items.get("hard shell", 0)
+        if self.balls(s) >= 3 and apr == 0 and not has_farm_pair:
             return False
         if "CUT" not in self.known_moves(s) or "BUILD" not in self.known_moves(s):
             return False
+        # 0) hard shell + magnet (farm produce) -> poke ball at the campfire
+        if self.camp is not None and items.get("magnet", 0) and items.get("hard shell", 0):
+            if economy.open_crafts(self.g, self.camp):
+                n = min(items["magnet"], items["hard shell"])
+                self.stats["crafted"] += economy.craft(self.g, "poké ball", n, log=self.log)
+                economy.close_crafts(self.g)
+            return True
         # 1) apricorns -> balls at a campfire
         if apr > 0 and self.camp is not None and (apr >= 3 or self.balls(s) == 0):
             if economy.open_crafts(self.g, self.camp):
@@ -192,7 +221,7 @@ class Brain:
         if self.goal_rest(s):
             return g.state()
         self.refresh()
-        for goal in (self.goal_recruit, self.goal_pickup, self.goal_supplies):
+        for goal in (self.goal_farm, self.goal_recruit, self.goal_pickup, self.goal_supplies):
             s = nav.ensure_free(g)
             if battle.in_battle(s):
                 return self.trainer.fight(s)
