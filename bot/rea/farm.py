@@ -269,6 +269,10 @@ def find_pen_spot(world, objs, types, origin, near=None, near_r=6, limit=250, ha
     hab = hab or HabitatMap(world, objs)
     groups = groups_for(types)
     taken = {(o[0], o[1]) for o in objs}
+    for o in objs:                               # keep the access tile (and its sides) of every existing gate free
+        if "gate" in o[2]:
+            for dx in (-1, 0, 1):
+                taken.add((o[0] + dx, o[1] - 1))
     dist = world.dist_map(origin)
 
     def free(p):
