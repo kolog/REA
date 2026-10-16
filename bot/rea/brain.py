@@ -186,6 +186,38 @@ class Brain:
             return True
         return False
 
+    def goal_flyer(self, s):
+        """No FLY pokemon yet: hunt the weakest wild one (a skarmory/xatu ... can be caught outright)."""
+        party = s["player"]["party"]
+        if any("FLY" in m.get("hms", []) for m in party) or self.failed.get("flyer", 0) >= 8:
+            return False
+        top = max(m["lvl"] for m in party)
+        here = nav.tile_of(s["player"])
+        cands = [m for m in self.mons if "FLY" in m[7] and m[2] in ("aggro", "friendly") and m[1] <= top + 10]
+        if not cands:
+            return False
+        cands.sort(key=lambda m: (m[1] > top + 4, abs(m[3] - here[0]) + abs(m[4] - here[1]) + 3 * m[1]))
+        m = cands[0]
+        tile = (m[3], m[4])
+        self.log("flyer hunt: %s L%d (%s) at %s" % (m[0], m[1], m[2], tile))
+        r = travel.go_near(self.g, self.world, tile, dist=4, avoid_grass=True, max_legs=150, avoid=self.danger_tiles(s))
+        if r == "battle":
+            return True
+        if r != "arrived":
+            self.failed["flyer"] = self.failed.get("flyer", 0) + 1
+            return True
+        fresh = [x for x in self.g.allmons() if x[0] == m[0] and abs(x[3] - tile[0]) + abs(x[4] - tile[1]) < 12]
+        if not fresh:
+            self.failed["flyer"] = self.failed.get("flyer", 0) + 1
+            return True
+        x = min(fresh, key=lambda y: abs(y[3] - here[0]) + abs(y[4] - here[1]))
+        field.clear(self.g)
+        if x[2] == "friendly":
+            recruit.recruit(self.g, m[0], log=self.log)
+        else:
+            recruit.provoke(self.g, (x[3], x[4]), log=self.log)
+        return True
+
     def goal_house(self, s):
         """Build the 5x3 house next to the camp (once): it is the pen for captured pokemon and the best bed."""
         if self.camp is None or rest.home_door(self.objs) is not None or self.failed.get("house", 0) >= 2:
@@ -287,9 +319,11 @@ class Brain:
             self.log("night in %s without light: going back to the camp" % s["map"]["biome"])
             travel.go_near(g, self.world, self.camp, dist=2, avoid_grass=True, max_legs=40, avoid=self.danger_tiles(s))
             return g.state()
-        goals = (self.goal_farm, self.goal_recruit, self.goal_pickup, self.goal_supplies, self.goal_house)
+        goals = (self.goal_flyer, self.goal_farm, self.goal_recruit, self.goal_pickup, self.goal_supplies, self.goal_house)
         if self.mission == "train":
-            goals = (self.goal_farm,) if farm.ready_items(self.mons) and False else ()
+            goals = ()
+        elif self.mission == "flyer":
+            goals = (self.goal_flyer,)
         for goal in goals:
             s = nav.ensure_free(g)
             if battle.in_battle(s):

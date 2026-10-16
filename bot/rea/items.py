@@ -45,14 +45,19 @@ def _norm(x):
     return "".join(c for c in unicodedata.normalize("NFD", str(x).lower()) if unicodedata.category(c) != "Mn")
 
 
+BOX = "class:com.pkmngen.game.DrawItemMenuGen2#boxIndex"
+
+
 def select_item(g, name):
     """With the bag open: put the cursor on `name` (switching tabs if needed) and press A.
-    Names are compared without accents/case; on failure `last_error` says why."""
+    Names are compared without accents/case. Tabs are identified by the game's boxIndex: some tabs are empty and
+    look identical, so comparing their contents cannot tell when we have been around all of them."""
     global last_error
     last_error = ""
     want = _norm(name)
-    seen_tabs = []
-    for _ in range(8):
+    start_box = g.get(BOX)
+    presses = 0
+    for _ in range(12):
         m = g.act("DrawItemMenuGen2", 2)
         if m is None:
             last_error = "item menu not open"
@@ -60,8 +65,7 @@ def select_item(g, name):
         if m.get("isSorting"):          # A on the same entry just ends the sorting mode
             g.tap("a", 2, 12)
             continue
-        lst = m["itemsList"]
-        norm = [_norm(x) for x in lst]
+        norm = [_norm(x) for x in m["itemsList"]]
         if want in norm:
             t = norm.index(want)
             _tap_until(g, "down" if t > m["currIndex"] + m["cursorPos"] else "up",
@@ -69,14 +73,13 @@ def select_item(g, name):
                        tries=40, gap=4)
             g.tap("a", 2, 12)
             return True
-        key = tuple(norm)
-        if key in seen_tabs:            # wrapped around all tabs without finding it
-            last_error = "%r not in any tab (tabs: %s)" % (name, seen_tabs)
+        if presses and g.get(BOX) == start_box:
+            last_error = "%r not in any of the %d tabs" % (name, presses)
             return False
-        seen_tabs.append(key)
         g.tap("right", 2, 14)
         g.wait(6)
-    last_error = "%r not found after cycling tabs" % name
+        presses += 1
+    last_error = "%r not found after %d tab switches" % (name, presses)
     return False
 
 

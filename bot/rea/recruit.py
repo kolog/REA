@@ -118,3 +118,17 @@ def pick_up(g, tile, log=print):
     if got:
         log("picked up %s" % got)
     return bool(got)
+
+
+def provoke(g, tile, log=print):
+    """Talk to an aggressive pokemon twice: the first A only warns, the second starts the battle."""
+    d = approach(g, tile)
+    if d is None:
+        return False
+    for _ in range(3):
+        face(g, d)
+        g.tap("a", 2, 20)
+        s = dismiss_text(g)
+        if "DrawBattle" in s["actions"]:
+            return True
+    return "DrawBattle" in g.state()["actions"]

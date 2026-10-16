@@ -168,21 +168,28 @@ def catch_probability(opp, mult):
 
 
 def best_ball(s):
-    """(ball, probability) with the best chance among the balls we hold; cheap balls win near-ties."""
+    """(ball, probability): the plain/cheap ball when it is nearly as good, a special one only when it clearly helps."""
     have = s["player"]["items"]
     opp = s["battle"].get("opp")
     party = s["player"]["party"]
     me = party[s["player"]["curr"]] if 0 <= s["player"]["curr"] < len(party) else party[0]
     turn = s["battle"].get("turn", 1)
-    best, bp, bscore = None, 0.0, -1.0
+    cands = []
     for b in BALLS:
-        if have.get(b, 0) <= 0:
-            continue
-        p = catch_probability(opp, ball_multiplier(b, me, opp, turn)) if opp else 0.0
-        score = p - 0.03 * BALL_COST.get(b, 1)
-        if score > bscore:
-            best, bp, bscore = b, p, score
-    return (best, bp) if best else (None, 0.0)
+        if have.get(b, 0) > 0:
+            p = catch_probability(opp, ball_multiplier(b, me, opp, turn)) if opp else 0.0
+            cands.append((b, p))
+    if not cands:
+        return None, 0.0
+    top = max(p for _, p in cands)
+    plain = "poké ball"
+    # the plain poke ball (made from farm produce) is the default; swap it for a special ball only if that adds >= 12 points
+    ok = [(b, p) for b, p in cands if p >= top - 0.12]
+    for b, p in ok:
+        if b == plain:
+            return b, p
+    ok.sort(key=lambda bp: (BALL_COST.get(bp[0], 1), -bp[1]))
+    return ok[0]
 
 
 def want_catch(s):
