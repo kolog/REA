@@ -373,6 +373,14 @@ def run_battle(g, log=print, max_seconds=300):
             g.wait(20)
         elif "DrawYesNoMenu" in acts:
             g.tap("b", 2, 10)          # "No" to switch / learn prompts
+        elif "DrawPokemonMenu$SelectedMenu" in acts and "DrawPokemonMenu" not in acts:
+            sel = g.act("DrawPokemonMenu$SelectedMenu", 2)           # a member was picked: press SWITCH
+            if sel is not None and "SWITCH" in sel["words"]:
+                for _ in range(4):
+                    if g.act("DrawPokemonMenu$SelectedMenu", 1)["curr"] == sel["words"].index("SWITCH"):
+                        break
+                    g.tap("up", 2, 8)
+            g.tap("a", 2, 12)
         elif "DrawPokemonMenu" in acts:
             # forced switch (our mon fainted): send the best remaining one
             opp = s.get("battle", {}).get("opp")

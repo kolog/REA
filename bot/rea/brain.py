@@ -9,7 +9,7 @@
 """
 import time
 
-from . import base, battle, economy, farm, field, nav, recruit, rest, travel
+from . import base, battle, economy, farm, field, fly, nav, recruit, rest, travel
 from .trainer import Trainer
 from .world import World
 
@@ -242,6 +242,7 @@ class Brain:
     def goal_pickup(self, s):
         here = nav.tile_of(s["player"])
         dist = self.world.dist_map(here)
+        flyer = any("FLY" in m.get("hms", []) and m["stats"]["hp"] > 0 for m in s["player"]["party"])
         best, bd = None, 1e9
         for o in self.objs:
             if not o[3] or (o[0], o[1]) in self.done_items or self.failed.get(("item", o[0], o[1]), 0) >= 2:
@@ -249,11 +250,20 @@ class Brain:
             near = [dist[(o[0] + dx, o[1] + dy)] for dx, dy in nav.DIRS.values() if (o[0] + dx, o[1] + dy) in dist]
             if near and min(near) < bd and min(near) <= 120:
                 best, bd = o, min(near)
+            elif flyer and abs(o[0] - here[0]) + abs(o[1] - here[1]) < bd:      # not reachable on foot: fly
+                best, bd = o, abs(o[0] - here[0]) + abs(o[1] - here[1])
         if best is None:
             return False
         tile = (best[0], best[1])
         self.log("pickup target: %s at %s" % (best[3], tile))
-        r = travel.go_near(self.g, self.world, tile, dist=1, avoid_grass=True, max_legs=60, avoid=self.danger_tiles(s))
+        can_fly = any("FLY" in m.get("hms", []) and m["stats"]["hp"] > 0 for m in s["player"]["party"])
+        if can_fly and abs(tile[0] - here[0]) + abs(tile[1] - here[1]) > 25:
+            if fly.trip(self.g, self.world, tile, log=self.log) is None:
+                self.failed[("item", tile[0], tile[1])] = self.failed.get(("item", tile[0], tile[1]), 0) + 1
+                return True
+            r = "arrived"
+        else:
+            r = travel.go_near(self.g, self.world, tile, dist=1, avoid_grass=True, max_legs=60, avoid=self.danger_tiles(s))
         if r == "arrived":
             field.clear(self.g)
             if recruit.pick_up(self.g, tile, log=self.log):
