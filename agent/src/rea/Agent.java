@@ -27,6 +27,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  *   ping
  *   state                       -> snapshot at next frame boundary
  *   do <keys|-> <frames>        -> hold keys (a+b+up+...) for N frames, then snapshot
+ *   walk <dir,dir,...>          -> continuous walk; snapshot has walk.result ok|blocked|interrupted
  *   grid <radius>               -> tiles around the player
  *   get <path> [depth]          -> reflective inspect, path like "player.pokemon.0"
  *   type <text>                 -> feed characters to the active text field
@@ -46,6 +47,12 @@ public final class Agent {
     static int remaining = 0;
     static boolean replyWhenDone = false;
     static boolean controlling = false;
+
+    // walk macro: follow a list of directions without ever releasing the keys between tiles
+    static String[] path;
+    static int pidx, stall;
+    static float tx, ty, lastX, lastY;
+    static String walkResult;
 
     public static void premain(String args, Instrumentation inst) { start(args); }
     public static void agentmain(String args, Instrumentation inst) { start(args); }
@@ -111,7 +118,7 @@ public final class Agent {
                 replyWhenDone = false;
                 send(snapshot());
             }
-            while (remaining == 0 && !replyWhenDone && !inbox.isEmpty()) handle(inbox.poll());
+            while (remaining == 0 && path == null && !replyWhenDone && !inbox.isEmpty()) handle(inbox.poll());
             applyInput();
         } catch (Throwable e) {
             send("{\"error\":" + q(e.toString()) + "}");
@@ -122,14 +129,42 @@ public final class Agent {
 
     static void applyInput() throws Exception {
         if (!controlling) return;
-        boolean[] cur = remaining > 0 ? want : new boolean[KEYS.length];
+        if (path != null) walkFrame();
+        boolean[] cur = (remaining > 0 || path != null) ? want : new boolean[KEYS.length];
         for (int i = 0; i < KEYS.length; i++) {
             boolean just = cur[i] && !held[i];
             held[i] = cur[i];
             sset(input, KEYS[i] + "Pressed", cur[i]);
             sset(input, KEYS[i] + "JustPressed", just);
         }
-        if (remaining > 0) { remaining--; if (remaining == 0) replyWhenDone = true; }
+        if (path == null && remaining > 0) { remaining--; if (remaining == 0) replyWhenDone = true; }
+    }
+
+    static void walkFrame() throws Exception {
+        Object pl = fget(G(), "player");
+        Object pos = fget(pl, "position");
+        float x = (Float) fget(pos, "x"), y = (Float) fget(pos, "y");
+        want = new boolean[KEYS.length];
+        if (!Boolean.TRUE.equals(fget(G(), "playerCanMove"))) { endWalk("interrupted"); return; }
+        if (pidx > 0 && Math.abs(x - tx) < 0.5f && Math.abs(y - ty) < 0.5f || pidx == 0) {
+            if (pidx >= path.length) { endWalk("ok"); return; }
+            String d = path[pidx++];
+            tx = Math.round(x / 16f) * 16f + (d.equals("right") ? 16 : d.equals("left") ? -16 : 0);
+            ty = Math.round(y / 16f) * 16f + (d.equals("up") ? 16 : d.equals("down") ? -16 : 0);
+            stall = 0;
+        }
+        String cd = path[pidx - 1];
+        want[java.util.Arrays.asList(KEYS).indexOf(cd)] = true;
+        if (x == lastX && y == lastY) { if (++stall > 45) { pidx--; endWalk("blocked"); } } else stall = 0;
+        lastX = x; lastY = y;
+    }
+
+    static void endWalk(String res) {
+        walkResult = "{\"result\":" + q(res) + ",\"done\":" + (res.equals("ok") ? pidx : Math.max(0, pidx - 1)) + "}";
+        path = null;
+        want = new boolean[KEYS.length];
+        replyWhenDone = true;
+        remaining = 0;
     }
 
     static void takeControl(boolean on) throws Exception {
@@ -166,6 +201,12 @@ public final class Agent {
                 send("{\"typed\":" + (proc != null) + "}");
                 break;
             }
+            case "walk": { // walk up,up,left : continuous, aborts on bump / text / battle
+                takeControl(true);
+                path = p[1].split(",");
+                pidx = 0; stall = 0; lastX = lastY = -99999;
+                break;
+            }
             case "grid": send(grid(p.length > 1 ? Integer.parseInt(p[1]) : 8)); break;
             case "get": send(inspect(p[1], p.length > 2 ? Integer.parseInt(p[2]) : 2)); break;
             default: send("{\"error\":\"unknown command\"}");
@@ -192,14 +233,15 @@ public final class Agent {
         sb.append(",\"actions\":[");
         List<?> acts = (List<?>) fget(g, "actionStack");
         boolean first = true;
+        java.util.LinkedHashSet<String> seen = new java.util.LinkedHashSet<>(); // unique, in stack order
         for (Object a : new ArrayList<>(acts)) {
             if (a == null) continue;
             String n = a.getClass().getName();
             n = n.substring(n.lastIndexOf('.') + 1);
-            sb.append(first ? "" : ",").append(q(n));
-            first = false;
+            if (seen.add(n)) { sb.append(first ? "" : ",").append(q(n)); first = false; }
         }
         sb.append("]");
+        if (walkResult != null) { sb.append(",\"walk\":").append(walkResult); walkResult = null; }
         sb.append(",\"playerCanMove\":").append(fget(g, "playerCanMove"));
         Object pl = fget(g, "player");
         if (pl != null) sb.append(",\"player\":").append(player(pl));

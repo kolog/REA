@@ -23,7 +23,7 @@ Protocolo (uma linha por comando): `ping`, `state`, `do <up+a|-> <frames>`, `gri
 
 ## Roadmap
 - [x] M0 — ponte agente↔Python, estado, input, menu inicial, novo jogo
-- [ ] M1 — navegação: grid de tiles, A*, evitar água/ledge, exploração
+- [x] M1 — navegação: grid de tiles, A* em trechos curtos, caminhada contínua no agente, exploração
 - [ ] M2 — batalha (tabela de tipos, escolha de golpe, captura, fuga)
 - [ ] M3 — sobrevivência/crafting (itens, receitas, fogueira, construção, dormir)
 - [ ] M4 — progressão (time, evolução, ginásios/lendários, objetivo final)

@@ -58,6 +58,12 @@ class Game(Conn):
         self.hold(key, hold)
         return self.wait(gap)
 
+    def walk(self, dirs):
+        """Follow a list of directions. Returns (state, result, steps_done)."""
+        s = self.call("walk " + ",".join(dirs))
+        w = s.get("walk", {})
+        return s, w.get("result"), w.get("done", 0)
+
     def grid(self, r=8):
         return self.call("grid %d" % r)
 
