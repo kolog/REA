@@ -143,3 +143,30 @@ Crafting happens at a built **campfire** (A on it).
   pen tile itself became `fence1_NSEW` (solid) and pressing A from the gate no longer interacts with the pokemon.
   Open question: how to collect from a fully enclosed 1x1 pen.
 * Pokemon wander widely when free (a dropped Ponyta moved ~15 tiles in minutes), so unpenned farms drift away.
+
+## The in-game guide (DrawItemMenu "GUIDE") — verbatim facts
+Hold X(B) still to stop a field move. Craft at a campfire. White out -> last place a sleeping bag was used. Ghosts
+appear in woods at night; a campfire wards them off. Grass types know CUT (trees/tall grass -> building materials).
+Fighting types know BUILD; **use CUT on buildings to remove them**. Eggs when near a compatible mate. Fences keep
+pokemon from wandering; pokemon are happier fenced in and near a shelter, happier in their natural habitat, and if
+happy enough they give items. Angry parents attack when you take eggs. A door between two house tiles = back/side
+door; a door between two fences = gate. Sleeping indoors restores hp twice as fast; a bed also cures status. Escape
+rope = nearest shore. Plant Miracle Seeds / Apricorns to grow grass / trees (renewable). Eggs hatch only while
+carried (RIDE counts, FLY does not). Rock types know SMASH on boulders (rocks respawn daily). Soft Feather + Silky
+Thread -> soft bed. Bug -> silky thread, Flying -> soft feather.
+
+## Where caught pokemon go (CatchPokemonWobblesThenCatch)
+Party < 6: joins the party. Party full: "sent to the last safe place" = `player.spawnLoc` (where the sleeping bag
+was last used); if that was inside a house (`spawnIndex != -1`) the pokemon appears in that interior. So nothing
+extra needs to be built; sleeping inside the house makes it the pokemon pen.
+
+## Houses (PkmnMap.adjustSurroundingTiles, experiments)
+* Standing on a built door tile puts the player in the interior map (`map.interior`), whose build list is different
+  (carpets, chest1, bed, couches, shelf, wardrobe, window, clock, plushies, kiln, stairs, torch, plants).
+  The outdoor build list (roof/wall/door/fence/campfire...) is only offered while outside.
+* Build tile families depend on terrain (house5_, house6_, house9_ ...): select by role (roof/wall/door/fence).
+* Test house: walls `house5_middle1` left/right of a `house5_door1` became house5_left1/right1; roofs
+  (`house5_roof_middle1`) go on the row above. Interior floor tiles are created under the footprint.
+* Pen recipe that works: fences on 3 sides + 2 fences flanking the open side + door in between (auto-converts to
+  `fence1gate1`); the game fills the enclosed tile with a fence (`fence1_NSEW`): remove it with CUT; collect from the
+  gate tile (A facing the pokemon).

@@ -71,3 +71,77 @@ def build_shelter(g, world, objs, center, log=print, avoid=()):
             spots.remove(p)
     field.clear(g)
     return placed
+
+
+# ---------------------------------------------------------------- the house
+HOUSE_W, HOUSE_H = 5, 3          # wall row (with the door) + two roof rows => 5x3 interior floor
+
+
+def find_site(world, objs, mons, camp, w=HOUSE_W, h=HOUSE_H, margin=1, radius=30):
+    """Best origin (south-west corner) for a w x h building: a flat, empty, grass-free rectangle (plus a free margin
+    so every outside piece can be built from a free tile), close to the camp and away from strong aggressive mons."""
+    taken = {(o[0], o[1]) for o in objs}
+    danger = [(m[3], m[4]) for m in mons if m[2] == "aggro"]
+    dist = world.dist_map(camp)
+    best = None
+    for (cx, cy), d in dist.items():
+        if d > radius:
+            continue
+        for ox in range(cx - w, cx + 1):
+            oy = cy
+            key = (ox, oy)
+            ok = True
+            for x in range(ox - margin, ox + w + margin):
+                for y in range(oy - margin, oy + h + margin):
+                    p = (x, y)
+                    if world.ch(p) != "." or p in taken:
+                        ok = False
+                        break
+                if not ok:
+                    break
+            if not ok:
+                continue
+            nearest_agg = min([abs(ox - a[0]) + abs(oy - a[1]) for a in danger] or [99])
+            if nearest_agg < 12:
+                continue
+            score = abs(ox + w // 2 - camp[0]) + abs(oy + h // 2 - camp[1])
+            if best is None or score < best[0]:
+                best = (score, key)
+    return best[1] if best else None
+
+
+def house_plan(origin, w=HOUSE_W, h=HOUSE_H):
+    """Pieces in a build order that always leaves a free outside tile next to the piece being placed."""
+    x0, y0 = origin
+    plan = []
+    for i in range(w):                                   # wall row, door in the middle
+        plan.append(("house5_door1" if i == w // 2 else "house5_middle1", (x0 + i, y0)))
+    for j in range(1, h):                                # roof rows, south to north
+        for i in range(w):
+            plan.append(("house5_roof_middle1", (x0 + i, y0 + j)))
+    return plan
+
+
+def build_house(g, world, objs, origin, log=print, avoid=()):
+    """Place every missing piece. Gathers all materials first, then builds. Returns (placed, total)."""
+    plan = house_plan(origin)
+    have = {(o[0], o[1]): o[2] for o in objs}
+    todo = [(n, t) for n, t in plan if t not in have]
+    if not todo:
+        return 0, len(plan)
+    need = {"log": len(todo), "grass": len(todo)}
+    s = g.state()
+    if economy.missing(economy.inv(s), need):
+        economy.gather(g, world, need, "CUT", log=log, max_trips=40)
+        field.clear(g)
+        if economy.missing(economy.inv(g.state()), need):
+            return 0, len(plan)
+    placed = 0
+    for name, tile in todo:
+        s = nav.ensure_free(g)
+        if "DrawBattle" in s["actions"]:
+            break
+        if economy.build_at(g, name, tile, log=log):
+            placed += 1
+    field.clear(g)
+    return placed, len(plan)

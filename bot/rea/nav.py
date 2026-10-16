@@ -33,6 +33,8 @@ class Grid:
             return False
         if self.avoid_grass and t.get("grass") and not t.get("tidal"):
             return False
+        if "door" in t.get("u", "") or "door" in t.get("n", ""):
+            return False                  # stepping on a house door moves us into the interior map
         if t.get("solid") or t.get("water") or t.get("lava") or t.get("ledge") or t.get("waterfall"):
             return False
         return True

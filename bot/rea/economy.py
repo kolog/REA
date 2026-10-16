@@ -125,6 +125,23 @@ def gather(g, world, need, move="CUT", log=print, max_trips=40):
     return not missing(inv(g.state()), need)
 
 
+def role(name):
+    """Build tiles come in terrain-specific families (house5_, house6_, house9_ ...): match by role instead."""
+    if name.startswith("fence"):
+        return "fence"
+    if "roof" in name and "middle1" in name:
+        return "roof"
+    if name.endswith("door1"):
+        return "door"
+    if name.startswith("house") and name.endswith("middle1"):
+        return "wall"
+    return name
+
+
+def tile_matches(want, have):
+    return want == have or role(want) == role(have)
+
+
 def free_neighbor(g, avoid_grass=True):
     """Direction of an adjacent empty, walkable tile (nothing built/grown on it), or None."""
     s = g.state()
@@ -148,7 +165,7 @@ def build(g, tile_name, log=print):
     if not field.select(g, idx, "BUILD", log):
         return False
     for _ in range(40):
-        if g.state()["player"]["building"] == tile_name:
+        if tile_matches(tile_name, g.state()["player"]["building"]):
             break
         g.tap("r", 2, 8)
     else:
@@ -266,7 +283,7 @@ def build_at(g, tile_name, target, log=print):
     if not field.select(g, idx, "BUILD", log):
         return False
     for _ in range(40):
-        if g.state()["player"]["building"] == tile_name:
+        if tile_matches(tile_name, g.state()["player"]["building"]):
             break
         g.tap("r", 2, 8)
     else:

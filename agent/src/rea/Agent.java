@@ -489,7 +489,8 @@ public final class Agent {
             else if (Boolean.TRUE.equals(fget(t, "isTidal"))) c = 't';
             else if (Boolean.TRUE.equals(fget(t, "isGrass"))) c = 'g';
             String nm = str(fget(t, "name"));
-            if (!solid && (nm.contains("door") || nm.contains("entrance"))) c = 'e';
+            String nmU = str(fget(t, "nameUpper"));
+            if (!solid && (nm.contains("door") || nm.contains("entrance") || nmU.contains("door"))) c = 'e';
             rows[cy][cx] = c;
             Object rt = fget(t, "routeBelongsTo");
             if (rt != null) {
